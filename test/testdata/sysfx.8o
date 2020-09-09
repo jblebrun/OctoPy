@@ -1,0 +1,10 @@
+: main
+    i := 0x200
+    i := later
+    i += v5
+
+    i := hex v9
+    i := bighex v8
+
+: later
+
