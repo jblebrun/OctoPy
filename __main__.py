@@ -2,6 +2,7 @@ import sys
 import traceback
 from octopy.parser import Parser, ParseError
 from octopy.tokenizer import tokenize
+from octopy.program import Program 
 
 def printError(e):
     c = e
@@ -17,8 +18,6 @@ def printError(e):
         e = e.__cause__
 
 
-
-
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: octoypy <infile.8o>")
@@ -26,10 +25,9 @@ if __name__ == "__main__":
 
     f = open(sys.argv[1])
 
-    p = Parser(tokenize(f))
+    p = Program()
     try:
-        p.parse()
-        p.resolve()
+        Parser(tokenize(f), p)
 
     except Exception as e:
         printError(e)

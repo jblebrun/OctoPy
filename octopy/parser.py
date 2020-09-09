@@ -46,16 +46,16 @@ class Macro():
 validIdent = re.compile("[a-zA-Z_][0-9a-zA-Z-_]*")
 
 class Parser():
-    def __init__(self, tokens):
+
+    def __init__(self, tokens, emitter):
         self.registers = self.registers = {"v"+hex(i)[2:]: i for i in range(0,16)}
         self.tokens = tokens
-        self.advance()
-        self.program = bytearray()
-        self.labels = {}
+        self.emitter = emitter
+        self.currentToken = ""
         self.macros = {}
-        self.unresolved = []
-        self.loops = []
-        self.endjumps = []
+        self.advance()
+        self.parse()
+        self.emitter.resolve()
 
     def parse(self):
         while True: 
@@ -65,32 +65,12 @@ class Parser():
             except StopIteration:
                 return
 
-    def resolve(self):
-        for (name, location) in self.unresolved:
-            if name not in self.labels:
-                raise LinkError(name)
-            op = self.program[location] >> 4
-            target = 0x200 + (op << 12 | self.labels[name])
-            self.program[location] = target >> 8
-            self.program[location+1] = target & 0xFF
-
     def error(self, msg):
         raise ParseError(msg, self.currentToken)
-
-    def pc(self): return len(self.program)
 
     def advance(self):
         self.currentToken = next(self.tokens)
         return self.currentToken
-
-    def addMainJump(self):
-        self.unresolved.append(("main", 0))
-        self.program.extend((0x15, 0x55))
-
-    def emit4(self, op, x, y, n): self.program.extend((op << 4 | x, y << 4 | n))
-    def emit3(self, op, x,  n): self.program.extend((op << 4 | x, n))
-    def emit2(self, op, n): self.program.extend((op << 4 | n >> 8, n & 0xFF))
-    def emit(self, op): self.program.extend((op >> 8, op & 0xFF))
 
     def emitMacro(self):
         """
@@ -108,13 +88,11 @@ class Parser():
             raise ParseError("During macro emission", macroEmitToken) from e 
         self.tokens = pgmtokens
 
-    def toResolve(self, name): self.unresolved.append((name, self.pc()))
 
     def handleLabel(self):
         self.advance()
         name = self.expectIdent()
-        if self.pc() == 0 and name != "main": self.addMainJump()
-        self.labels[name] = self.pc()
+        self.emitter.trackLabel(name)
 
     def handleAlias(self):
         self.advance()
@@ -128,50 +106,45 @@ class Parser():
         self.advance()
         if op == "+=":
             reg = self.expectRegister()
-            self.emit3(0xF, reg, 0x1E)
+            self.emitter.ADDI(reg)
             return
 
         if op != ":=": self.error("Only := or += for i")
 
         if self.currentToken.text in ("hex", "bighex"):
-            num = 0x29 if self.currentToken.text == "hex" else 0x30
-            op = self.currentToken.text
+            f = self.emitter.LDHEX if self.currentToken.text == "hex" else self.emitter.LDBIGHEX
             self.advance()
             src = self.expectRegister()
-            self.emit3(0xF, src, num)
+            f(src)
             return
         
         num = self.acceptAddress()
         if num != None:
-            self.emit2(0xA, num)
+            self.emitter.LDI(num)
             return
 
         name = self.expectIdent()
-        self.toResolve(name)
-        self.emit2(0xA, 0x666)
+        self.emitter.LDI(name)
 
     def handleSave(self):
         self.advance()
         x = self.expectRegister()
-        self.emit3(0xF, x, 0x55)
+        self.emitter.LOAD(x)
 
     def handleLoad(self):
         self.advance()
         x = self.expectRegister()
-        self.emit3(0xF, x, 0x65)
+        self.emitter.SAVE(x)
 
-    def jumpOrJump0(self, op):
+    def jumpTarget(self, op):
         self.advance()
         num = self.acceptAddress()
         if num != None:
-            self.emit2(0x1, num)
-        else:
-            name = self.expectIdent()
-            self.toResolve(name)
-            self.emit(0x1666)
+            return num
+        return self.currentToken.text
 
-    def handleJump(self): self.jumpOrJump0(0x1)
-    def handleJump0(self): self.jumpOrJump0(0xB)
+    def handleJump(self): self.JMP(self.jumpTarget())
+    def handleJump0(self): self.JMP0(self.jumpTarget())
 
     def handleMacro(self):
         name = self.advance().text
@@ -200,37 +173,35 @@ class Parser():
         srcnum = self.acceptNumber()
 
         if src in self.registers:
-            if op == ":=":  return self.emit4(0x8, dst, self.registers[src], 0)
-            if op == "|=":  return self.emit4(0x8, dst, self.registers[src], 1)
-            if op == "&=":  return self.emit4(0x8, dst, self.registers[src], 2)
-            if op == "^=":  return self.emit4(0x8, dst, self.registers[src], 3)
-            if op == "+=":  return self.emit4(0x8, dst, self.registers[src], 4)
-            if op == "-=":  return self.emit4(0x8, dst, self.registers[src], 5)
-            if op == ">>=": return self.emit4(0x8, dst, self.registers[src], 6)
-            if op == "=-":  return self.emit4(0x8, dst, self.registers[src], 7)
-            if op == "<<=": return self.emit4(0x8, dst, self.registers[src], 0xE)
+            if op == ":=":  return self.emitter.ALU(dst, self.registers[src], 0)
+            if op == "|=":  return self.emitter.ALU(dst, self.registers[src], 1)
+            if op == "&=":  return self.emitter.ALU(dst, self.registers[src], 2)
+            if op == "^=":  return self.emitter.ALU(dst, self.registers[src], 3)
+            if op == "+=":  return self.emitter.ALU(dst, self.registers[src], 4)
+            if op == "-=":  return self.emitter.ALU(dst, self.registers[src], 5)
+            if op == ">>=": return self.emitter.ALU(dst, self.registers[src], 6)
+            if op == "=-":  return self.emitter.ALU(dst, self.registers[src], 7)
+            if op == "<<=": return self.emitter.ALU(dst, self.registers[src], 0xE)
             else: self.error("unknown register op")
         elif srcnum is not None:
-            if op == ":=": return self.emit3(0x6, dst, srcnum) 
-            elif op == "+=": return self.emit3(0x7, dst, srcnum)
-            elif op == "-=": return self.emit3(0x7, dst, -srcnum&0xFF)
+            if op == ":=": return self.emitter.LDN(dst, srcnum) 
+            elif op == "+=": return self.emitter.ADDN(dst, srcnum)
+            elif op == "-=": return self.emitter.ADDN(dst, -srcnum&0xFF)
             else: self.error("Register op with constant: Only := or +=")
-        elif src == "delay": return self.emit3(0xF, dst, 0x7)
-        elif src == "key": return self.emit3(0xF, dst, 0x0A)
+        elif src == "delay": return self.emitter.LDD(dst)
+        elif src == "key": return self.emitter.LDK(dst)
         elif src == "random":
             self.advance()
             mask = self.expectNumber()
+            return self.emitter.RAND(dst, mask)
         else: raise self.error("Unknown operand")
 
-    def handleLoop(self): self.loops.append(self.pc())
-
-    def handleAgain(self):
-        ret = self.loops.pop()
-        self.emit2(1, ret+0x200)
+    def handleLoop(self): self.emitter.startLoop()
+    def handleAgain(self): self.emitter.endLoop()
     
-    def handleHires(self): return self.emit(0x00FF)
+    def handleHires(self): return self.emitter.HIRES()
     
-    def handleLores(self): return self.emit(0x00FE)
+    def handleLores(self): return self.emitter.LORES()
 
     def acceptRegister(self):
         return self.registers.get(self.currentToken.text, None)
@@ -262,15 +233,13 @@ class Parser():
         return num
 
 
-    def handleDelay(self): self.emitDelayOrBuzzer()
-    def handleBuzzer(self): self.emitDelayOrBuzzer()
-    def emitDelayOrBuzzer(self):
-        subop = 0x15 if self.currentToken.text == "delay" else 0x18
+    def handleDelay(self): self.STD(self.delayOrBuzzerTarget())
+    def handleBuzzer(self): self.STB(self.delayOrBuzzerTarget())
+    def delayOrBuzzerTarget(self):
         self.advance()
         if self.currentToken.text != ":=": self.error("Can only use :=")
         self.advance()
-        dest = self.expectRegister()
-        self.emit3(0xF, dest, subop)
+        return self.expectRegister()
 
     def handleSprite(self): 
         self.advance()
@@ -279,7 +248,7 @@ class Parser():
         y = self.expectRegister()
         self.advance()
         n = self.expectNumber()
-        return self.emit4(0xD, x, y, n)
+        return self.emitter.SPRITE(x, y, n)
 
 
     oppOp = {
@@ -327,61 +296,48 @@ class Parser():
 
         # loads for comparison subtraction
         if op in ("<", ">", "<=", ">="): 
-            if isNum: self.emit3(0x6, 0xF, bn)
-            else: self.emit4(0x8, 0xF, br, 0)
+            if isNum: self.emitter.LDN(0xF, bn)
+            else: self.emitter.ALU(0xF, br, 0)
 
         # subtraction for comparison
-        if op in (">", "<="): self.emit4(0x8, 0xF, a, 5)
-        if op in ("<", ">="): self.emit4(0x8, 0xF, a, 7) 
+        if op in (">", "<="): self.emitter.ALU(0xF, a, 5)
+        if op in ("<", ">="): self.emitter.ALU(0xF, a, 7) 
 
         # Handle key
-        if op == "-key": self.emit4(0xE, a, 0x9, 0xE) 
-        elif op == "key": self.emit4(0xE, a, 0xA, 0x1) 
+        if op == "-key": self.emitter.SKNP(a)
+        elif op == "key": self.emitter.SKP(a)
         # handle reg
         elif op == "==":
-            if isNum: self.emit3(4, a, bn)
-            else: self.emit4(9, a, br, 0)
+            if isNum: self.emitter.SNEN(a, bn)
+            else: self.emitter.SNER(a, br)
         elif op == "!=":
-            if isNum: self.emit3(3, a, bn)
-            else: self.emit4(5, a, br,0)
-        elif op in ("<", ">"): self.emit3(4, 0xf, 0)
-        elif op in ("<=", ">="): self.emit3(3, 0xf, 0)
+            if isNum: self.emitter.SEN(a, bn)
+            else: self.emitter.SER(a, br)
+        elif op in ("<", ">"): self.emitter.SNEN(0xf, 0)
+        elif op in ("<=", ">="): self.emitter.SEN(0xf, 0)
 
-        if body == "begin": self.pushEndJump()
+        if body == "begin": self.emitter.pushEndJump()
 
-
-    def pushEndJump(self):
-        self.endjumps.append(self.pc())
-        self. emit(0x1333)
-
-    def popEndJump(self, offset=0):
-        if len(self.endjumps) == 0: self.error("unexpected 'end'")
-        endjump = self.endjumps.pop()
-        target = self.pc()+0x200 + offset
-        self.program[endjump] = (1 << 4) + (target >> 8)
-        self.program[endjump+1] = target & 0xFF
 
     def handleElse(self):
-        self.popEndJump(2)
-        self.pushEndJump()
+        self.emitter.popEndJump(2)
+        self.emitter.pushEndJump()
 
-    def handleEnd(self): self.popEndJump()
+    def handleEnd(self): self.emitter.popEndJump()
 
-    def handleReturn(self): self.emit(0xEE)
+    def handleReturn(self): self.emitter.RET()
 
     def handleBareCall(self):
         num = self.acceptAddress()
         if num != None:
-            self.program.append(num)
+            self.emitter.emitByte(num)
             return
 
         try:
             name = self.expectIdent()
         except ParseError:
             raise self.error("expected a number or identifier to start a statement. (Is there an error just before this?)")
-        self.toResolve(name)
-        self.program.append(0x2F)
-        self.program.append(0xFF)
+        self.emitter.CALL(name)
 
     def expectProgramLine(self):
         startToken = self.currentToken
