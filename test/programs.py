@@ -4,6 +4,7 @@ import sys
 
 from octopy.parser import Parser
 from octopy.tokenizer import tokenize
+from octopy.program import Program
 
 curdir = os.path.dirname(__file__) 
 def filehere(name): return os.path.join(curdir, name)
@@ -49,9 +50,8 @@ class TestPrograms(unittest.TestCase, metaclass=MetaTest):
         # Compile the program
         srcfile = filehere("{}.8o".format(name))
         with open(srcfile) as src:
-            p = Parser(tokenize(src))
-            p.parse()
-            p.resolve()
+            p = Program()
+            Parser(tokenize(src), p)
 
         # Generate the comparisons for each 16 byte group
         pc = 0
@@ -75,8 +75,8 @@ class TestPrograms(unittest.TestCase, metaclass=MetaTest):
         Check a row of up to 16 bytes. If there are any mismatches, generate
         a differences line. 
         """
-        srcwords = [self.word(src[i:]) for i in range(0, 8)]
-        expectwords = [self.word(expect[i:]) for i in range(0, 8)]
+        srcwords = [self.word(src[i:]) for i in range(0, 16, 2)]
+        expectwords = [self.word(expect[i:]) for i in range(0, 16, 2)]
 
         diffs = [" " if si == ei else "*" for si, ei in zip(srcwords, expectwords)]
 
