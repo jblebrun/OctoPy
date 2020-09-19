@@ -1,5 +1,6 @@
 import unittest
 import os
+import sys
 
 from octopy.parser import Parser
 from octopy.tokenizer import tokenize
@@ -41,7 +42,10 @@ class TestPrograms(unittest.TestCase, metaclass=MetaTest):
         Mismatches will throw an error, and include the instructions that differ
         """
 
-        print("Running test for", name)
+        print("")
+        print("Running test for", name, end =" -> ")
+        sys.stdout.flush()
+
         # Compile the program
         srcfile = filehere("{}.8o".format(name))
         with open(srcfile) as src:

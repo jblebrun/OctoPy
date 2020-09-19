@@ -134,14 +134,14 @@ class Parser():
         if op != ":=": self.error("Only := or += for i")
 
         if self.currentToken.text in ("hex", "bighex"):
-            num = 0x29 if src == "hex" else 0x30
-            op = src
+            num = 0x29 if self.currentToken.text == "hex" else 0x30
+            op = self.currentToken.text
             self.advance()
             src = self.expectRegister()
-            emit3(0xF, src, num)
+            self.emit3(0xF, src, num)
             return
         
-        num = self.acceptNumber()
+        num = self.acceptAddress()
         if num != None:
             self.emit2(0xA, num)
             return
@@ -162,7 +162,7 @@ class Parser():
 
     def jumpOrJump0(self, op):
         self.advance()
-        num = self.acceptNumber()
+        num = self.acceptAddress()
         if num != None:
             self.emit2(0x1, num)
         else:
@@ -245,6 +245,14 @@ class Parser():
             num = int(self.currentToken.text, 0)
             if num < -127 or num > 255: self.error("invalid byte number")
             if num < 0: num = num & 0xFF
+        except ValueError:  return None
+        return num
+
+    def acceptAddress(self):
+        try: 
+            num = int(self.currentToken.text, 0)
+            if num < -0x7FF or num > 0xFFF: self.error("invalid address number")
+            if num < 0: num = num & 0xFFF
         except ValueError:  return None
         return num
 
@@ -362,7 +370,7 @@ class Parser():
     def handleReturn(self): self.emit(0xEE)
 
     def handleBareCall(self):
-        num = self.acceptNumber()
+        num = self.acceptAddress()
         if num != None:
             self.program.append(num)
             return
