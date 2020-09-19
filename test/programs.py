@@ -12,13 +12,19 @@ class MetaTest(type):
     This metaclass looks through the /testdata directory for any .8o files, and for each one it finds,
     adds a test function to the TestPrograms class.
     """
+
+    def testrunner(cls, name):
+        def tf(self): 
+            self.run_program_test(name)
+        return tf
+
     def __new__(cls, name, bases, dct):
         x = super().__new__(cls, name, bases, dct)
         testsrcs = [f for f in os.listdir(filehere("testdata")) if f.endswith(".8o")]
         for src in testsrcs:
             name = os.path.join("testdata", src.split(".")[0])
-            print("DISCOVERED TEST {}".format(name))
-            def tf(self): self.run_program_test(name)
+            print("DISCOVERED TEST ", name)
+            tf = cls.testrunner(cls, name)
             setattr(x, "test_{}".format(name), tf)
         return x
 
@@ -35,6 +41,7 @@ class TestPrograms(unittest.TestCase, metaclass=MetaTest):
         Mismatches will throw an error, and include the instructions that differ
         """
 
+        print("Running test for", name)
         # Compile the program
         srcfile = filehere("{}.8o".format(name))
         with open(srcfile) as src:
