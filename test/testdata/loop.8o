@@ -1,0 +1,5 @@
+: main
+    loop
+        v2 += 6
+        sprite v2 v5 3
+    again

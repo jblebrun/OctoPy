@@ -46,18 +46,16 @@ class Macro():
 validIdent = re.compile("[a-zA-Z_][0-9a-zA-Z-_]*")
 
 class Parser():
-    currentToken = ""
-    program = bytearray()
-    labels = {}
-    macros = {}
-    unresolved = []
-    loops = []
-    endjumps = []
-
     def __init__(self, tokens):
         self.registers = self.registers = {"v"+hex(i)[2:]: i for i in range(0,16)}
         self.tokens = tokens
         self.advance()
+        self.program = bytearray()
+        self.labels = {}
+        self.macros = {}
+        self.unresolved = []
+        self.loops = []
+        self.endjumps = []
 
     def parse(self):
         while True: 

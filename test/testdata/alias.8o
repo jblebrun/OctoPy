@@ -1,0 +1,9 @@
+:alias something v0
+:alias another v5
+:alias andsoon v6
+
+: main
+    v1 := something
+    something := v2
+    another += something
+    andsoon <<= another
