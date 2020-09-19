@@ -1,0 +1,7 @@
+: main
+    if v1 == 10 then v8 := 1
+    if v2 != 20 then v9 := 2 
+    if v3 < 30 then va := 3 
+    if v4 > 40 then vb := 4 
+    if v5 <= 50 then vc := 5 
+    if v6 > 60 then vd := 6

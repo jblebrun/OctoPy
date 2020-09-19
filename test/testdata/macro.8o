@@ -1,0 +1,9 @@
+:macro noargs {
+    v2 := 4
+}
+
+: main
+    noargs
+    noargs
+    v2 := 5
+    noargs

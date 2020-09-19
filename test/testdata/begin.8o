@@ -1,0 +1,7 @@
+: main
+    if v1 == 10 begin v8 := 1 end
+    if v2 != 20 begin v9 := 2 end
+    if v3 < 30 begin va := 3 end
+    if v4 > 40 begin vb := 4 end
+    if v5 <= 50 begin vc := 5 end
+    if v6 > 60 begin vd := 6 end
