@@ -1,10 +1,13 @@
 import re
 from typing import NamedTuple
-from octopy.tokenizer import maptokens, Token
+from octopy.tokenizer import maptokens
 
 class ParseError(Exception):
-    msg: str
-    token: Token
+    def __init__(self, msg, token):
+        super().__init__(msg)
+        self.msg = msg
+        self.token = token
+
     def __str__(self):
         return "{}: {}".format(self.token, self.msg)
 
@@ -26,6 +29,7 @@ class Parser():
         self.tokens = tokens
         self.emitter = emitter
         self.macros = {}
+        self.current_token = None
         self.advance()
         self.parse()
         self.emitter.resolve()
@@ -46,16 +50,12 @@ class Parser():
         """
         Swap out the program tokens for this macro, and then parse normally.
         """
-        macro_emit_token = self.current_token
         macro = self.macros[self.current_token.text]
         macroargs = {k:self.advance().text for k in macro.args}
         pgmtokens = self.tokens
         self.tokens = maptokens(macro.tokens, macroargs)
         self.advance()
-        try:
-            self.parse()
-        except ParseError as e:
-            raise ParseError("During macro emission", macro_emit_token) from e
+        self.parse()
         self.tokens = pgmtokens
 
     def expect_ident(self):
@@ -101,10 +101,12 @@ class Parser():
         return num
 
     def __expect_statement(self):
+        start_type = "Parsing Statement"
         try:
             start_token = self.current_token
             cur = self.current_token.text
             if cur in self.macros:
+                start_type = "Emitting Macro"
                 self.emit_macro()
             elif cur in self.registers:
                 self.__expect_register_operation()
@@ -121,14 +123,10 @@ class Parser():
                     meth = getattr(self, methname, self.named_call)
                     meth()
         except Exception as e:
-            raise ParseError("Statement start", start_token) from e
+            raise ParseError("{}".format(start_type), start_token) from e
 
     def named_call(self):
-        try:
-            self.expect_ident()
-        except ParseError as e:
-            raise self.error("expected a number or identifier to start a statement.\
-                    (Is there an error just before this?)") from e
+        self.expect_ident()
         self.emitter.CALL(self.current_token)
 
     ###############
