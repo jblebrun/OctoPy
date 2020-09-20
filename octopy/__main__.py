@@ -2,26 +2,26 @@ import sys
 import traceback
 from octopy.parser import Parser, ParseError
 from octopy.tokenizer import tokenize
-from octopy.program import Program 
+from octopy.program import Program
 
-def printError(e):
-    c = e
-    while c != None:
-        if c.__class__ is not ParseError:
-            print("Parser Crash: {}", c)
+def print_error(err):
+    cause = err
+    while cause is not None:
+        if cause.__class__ is not ParseError:
+            print("Parser Crash: {}", cause)
             traceback.print_exc()
             return
-        c = c.__cause__
-    
-    while e != None:
-        print(e)
-        e = e.__cause__
+        cause = cause.__cause__
+
+    while err is not None:
+        print(err)
+        err = err.__cause__
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: octoypy <infile.8o>")
-        exit()
+        sys.exit()
 
     f = open(sys.argv[1])
 
@@ -29,8 +29,8 @@ if __name__ == "__main__":
     try:
         Parser(tokenize(f), p)
 
-    except Exception as e:
-        printError(e)
+    except ParseError as error:
+        print_error(error)
 
     outname = sys.argv[1] + ".ch8"
     fout = open(outname, 'w')

@@ -1,83 +1,53 @@
 import re
-import sys
-from octopy.tokenizer import maptokens
-
-
-#TODO
-# Calc
-# stringmode
-# next
-# org
-# unpack
-# clear
-# number ranges
-# alias calc expr
-
-# bcd
-# scollrs
-# exit
-# flags
+from typing import NamedTuple
+from octopy.tokenizer import maptokens, Token
 
 class ParseError(Exception):
-    def __init__(self, msg, token):
-        self.msg = msg
-        self.token = token
-    def __repr__(self): return __str__()
-    def __str__(self): return "{}: {}".format(self.token, self.msg)
+    msg: str
+    token: Token
+    def __str__(self):
+        return "{}: {}".format(self.token, self.msg)
 
-class LinkError(Exception):
-    def __init__(self, name):
-        self.name = name
-    def __str__(self): return "Unresolved name {}".format(self.name)
-
-
-class Macro():
+class Macro(NamedTuple):
     """
     Holds the name, argument list, and unprocessed tokens for a macro.
     """
-    def __init__(self, name, args, tokens):
-        self.name = name
-        self.args = args
-        self.tokens = tokens
+    name: str
+    args: list
+    tokens: list
     def __repr__(self):
         return "{}({}): <{}>".format(self.name, self.args, self.tokens)
 
-    
 validIdent = re.compile("[a-zA-Z_][0-9a-zA-Z-_]*")
 
 class Parser():
-
     def __init__(self, tokens, emitter):
-        self.registers = self.registers = {"v"+hex(i)[2:]: i for i in range(0,16)}
+        self.registers = self.registers = {"v"+hex(i)[2:]: i for i in range(0, 16)}
         self.tokens = tokens
         self.emitter = emitter
-        self.currentToken = ""
         self.macros = {}
         self.advance()
         self.parse()
         self.emitter.resolve()
 
     def parse(self):
-        while True: 
-            self.expectProgramLine()
-            try: 
-                self.advance()
-            except StopIteration:
-                return
+        while self.current_token is not None:
+            self.__expect_statement()
+            self.advance()
 
     def error(self, msg):
-        raise ParseError(msg, self.currentToken)
+        raise ParseError(msg, self.current_token)
 
     def advance(self):
-        self.currentToken = next(self.tokens)
-        return self.currentToken
+        self.current_token = next(self.tokens, None)
+        return self.current_token
 
-    def emitMacro(self):
+    def emit_macro(self):
         """
         Swap out the program tokens for this macro, and then parse normally.
         """
-        macroEmitToken = self.currentToken
-        macro = self.macros[self.currentToken.text]
+        macro_emit_token = self.current_token
+        macro = self.macros[self.current_token.text]
         macroargs = {k:self.advance().text for k in macro.args}
         pgmtokens = self.tokens
         self.tokens = maptokens(macro.tokens, macroargs)
@@ -85,173 +55,245 @@ class Parser():
         try:
             self.parse()
         except ParseError as e:
-            raise ParseError("During macro emission", macroEmitToken) from e 
+            raise ParseError("During macro emission", macro_emit_token) from e
         self.tokens = pgmtokens
 
+    def expect_ident(self):
+        if not validIdent.match(self.current_token.text):
+            self.error("Expected an identifier")
+        return self.current_token.text
 
-    def handleLabel(self):
-        self.advance()
-        name = self.expectIdent()
-        self.emitter.trackLabel(name)
+    def accept_register(self):
+        return self.registers.get(self.current_token.text, None)
 
-    def handleAlias(self):
+    def expect_register(self):
+        reg = self.accept_register()
+        if reg is None:
+            self.error("expected a register")
+        return reg
+
+    def accept_number(self):
+        try:
+            num = int(self.current_token.text, 0)
+            if num < -127 or num > 255:
+                self.error("invalid byte number")
+            if num < 0:
+                num = num & 0xFF
+            return num
+        except ValueError:
+            return None
+
+    def accept_address(self):
+        try:
+            num = int(self.current_token.text, 0)
+            if num < -0x7FF or num > 0xFFF:
+                self.error("invalid address number")
+            if num < 0:
+                num = num & 0xFFF
+        except ValueError:
+            return None
+        return num
+
+    def expect_number(self):
+        num = self.accept_number()
+        if num is None:
+            self.error("expected a number")
+        return num
+
+    def __expect_statement(self):
+        try:
+            start_token = self.current_token
+            cur = self.current_token.text
+            if cur in self.macros:
+                self.emit_macro()
+            elif cur in self.registers:
+                self.__expect_register_operation()
+            elif cur == ":":
+                self.__handle_label()
+            elif cur == ";":
+                self.__handle_return()
+            else:
+                num = self.accept_number()
+                if num is not None:
+                    self.emitter.emit_byte(num)
+                else:
+                    methname = "_Parser__handle_{}".format(cur.replace(":", ""))
+                    meth = getattr(self, methname, self.named_call)
+                    meth()
+        except Exception as e:
+            raise ParseError("Statement start", start_token) from e
+
+    def named_call(self):
+        try:
+            self.expect_ident()
+        except ParseError as e:
+            raise self.error("expected a number or identifier to start a statement.\
+                    (Is there an error just before this?)") from e
+        self.emitter.CALL(self.current_token)
+
+    ###############
+    #### Directives
+
+    def __handle_label(self):
         self.advance()
-        dst = self.expectIdent()
+        name = self.expect_ident()
+        self.emitter.track_label(name)
+
+    def __handle_alias(self):
         self.advance()
-        src = self.expectRegister()
+        dst = self.expect_ident()
+        self.advance()
+        src = self.expect_register()
         self.registers[dst] = src
 
-    def handleI(self):
-        op = self.advance().text
-        self.advance()
-        if op == "+=":
-            reg = self.expectRegister()
-            self.emitter.ADDI(reg)
-            return
-
-        if op != ":=": self.error("Only := or += for i")
-
-        if self.currentToken.text in ("hex", "bighex"):
-            f = self.emitter.LDHEX if self.currentToken.text == "hex" else self.emitter.LDBIGHEX
-            self.advance()
-            src = self.expectRegister()
-            f(src)
-            return
-        
-        num = self.acceptAddress()
-        if num != None:
-            self.emitter.LDI(num)
-            return
-
-        name = self.expectIdent()
-        self.emitter.LDI(name)
-
-    def handleSave(self):
-        self.advance()
-        x = self.expectRegister()
-        self.emitter.LOAD(x)
-
-    def handleLoad(self):
-        self.advance()
-        x = self.expectRegister()
-        self.emitter.SAVE(x)
-
-    def jumpTarget(self, op):
-        self.advance()
-        num = self.acceptAddress()
-        if num != None:
-            return num
-        return self.currentToken.text
-
-    def handleJump(self): self.JMP(self.jumpTarget())
-    def handleJump0(self): self.JMP0(self.jumpTarget())
-
-    def handleMacro(self):
+    def __handle_macro(self):
         name = self.advance().text
         args = []
         arg = self.advance().text
-        while arg != "{": 
+        while arg != "{":
             args.append(arg)
             arg = self.advance().text
         tokens = []
         token = self.advance()
-        while token.text != "}": 
+        while token.text != "}":
             tokens.append(token)
             token = self.advance()
         self.macros[name] = Macro(name, args, tokens)
 
+    ##############
+    ### Operations
 
-    def expectIdent(self):
-        if not validIdent.match(self.currentToken.text): self.error("Expected an identifier")
-        return self.currentToken.text
+    def __handle_i(self):
+        op = self.advance().text
+        self.advance()
+        if op == "+=":
+            reg = self.expect_register()
+            self.emitter.ADDI(reg)
+            return
 
-    def expectRegisterOperation(self):
-        dstName = self.currentToken.text
-        dst = self.registers[self.currentToken.text]
+        if op != ":=":
+            self.error("Only := or += for i")
+
+        if self.current_token.text in ("hex", "bighex"):
+            f = self.emitter.LDHEX if self.current_token.text == "hex" else self.emitter.LDBIGHEX
+            self.advance()
+            src = self.expect_register()
+            f(src)
+            return
+
+        num = self.accept_address()
+        if num is not None:
+            self.emitter.LDI(num)
+            return
+
+        self.expect_ident()
+        self.emitter.LDI(self.current_token)
+
+    def __expect_register_operation(self):
+        dst = self.registers[self.current_token.text]
         op = self.advance().text
         src = self.advance().text
-        srcnum = self.acceptNumber()
+        srcnum = self.accept_number()
 
         if src in self.registers:
-            if op == ":=":  return self.emitter.ALU(dst, self.registers[src], 0)
-            if op == "|=":  return self.emitter.ALU(dst, self.registers[src], 1)
-            if op == "&=":  return self.emitter.ALU(dst, self.registers[src], 2)
-            if op == "^=":  return self.emitter.ALU(dst, self.registers[src], 3)
-            if op == "+=":  return self.emitter.ALU(dst, self.registers[src], 4)
-            if op == "-=":  return self.emitter.ALU(dst, self.registers[src], 5)
-            if op == ">>=": return self.emitter.ALU(dst, self.registers[src], 6)
-            if op == "=-":  return self.emitter.ALU(dst, self.registers[src], 7)
-            if op == "<<=": return self.emitter.ALU(dst, self.registers[src], 0xE)
-            else: self.error("unknown register op")
+            self.__register_register_op(op, dst, src)
         elif srcnum is not None:
-            if op == ":=": return self.emitter.LDN(dst, srcnum) 
-            elif op == "+=": return self.emitter.ADDN(dst, srcnum)
-            elif op == "-=": return self.emitter.ADDN(dst, -srcnum&0xFF)
-            else: self.error("Register op with constant: Only := or +=")
-        elif src == "delay": return self.emitter.LDD(dst)
-        elif src == "key": return self.emitter.LDK(dst)
+            self.__register_const_op(op, dst, srcnum)
+        elif src == "delay":
+            self.emitter.LDD(dst)
+        elif src == "key":
+            self.emitter.LDK(dst)
         elif src == "random":
             self.advance()
-            mask = self.expectNumber()
-            return self.emitter.RAND(dst, mask)
+            mask = self.expect_number()
+            self.emitter.RAND(dst, mask)
         else: raise self.error("Unknown operand")
 
-    def handleLoop(self): self.emitter.startLoop()
-    def handleAgain(self): self.emitter.endLoop()
-    
-    def handleHires(self): return self.emitter.HIRES()
-    
-    def handleLores(self): return self.emitter.LORES()
+    def __register_const_op(self, op, dst, srcnum):
+        if op == ":=":
+            self.emitter.LDN(dst, srcnum)
+        elif op == "+=":
+            self.emitter.ADDN(dst, srcnum)
+        elif op == "-=":
+            self.emitter.ADDN(dst, -srcnum&0xFF)
+        else: self.error("Register op with constant: Only := or +=")
 
-    def acceptRegister(self):
-        return self.registers.get(self.currentToken.text, None)
-
-    def expectRegister(self):
-        reg = self.acceptRegister()
-        if reg == None: self.error("expected a register")
-        return reg
-
-    def acceptNumber(self):
-        try: 
-            num = int(self.currentToken.text, 0)
-            if num < -127 or num > 255: self.error("invalid byte number")
-            if num < 0: num = num & 0xFF
-        except ValueError:  return None
-        return num
-
-    def acceptAddress(self):
-        try: 
-            num = int(self.currentToken.text, 0)
-            if num < -0x7FF or num > 0xFFF: self.error("invalid address number")
-            if num < 0: num = num & 0xFFF
-        except ValueError:  return None
-        return num
-
-    def expectNumber(self):
-        num = self.acceptNumber()
-        if num == None: self.error("expected a number")
-        return num
+    aluOps = {
+        ":=": 0, "|=": 1, "&=":  2, "^=": 3,
+        "+=": 4, "-=": 5, ">>=": 6, "=-": 7,
+        "<<=": 0xE
+    }
+    def __register_register_op(self, op, dst, src):
+        try:
+            subcode = self.aluOps[op]
+        except KeyError:
+            self.error("unknown register op")
+        self.emitter.ALU(dst, self.registers[src], subcode)
 
 
-    def handleDelay(self): self.STD(self.delayOrBuzzerTarget())
-    def handleBuzzer(self): self.STB(self.delayOrBuzzerTarget())
-    def delayOrBuzzerTarget(self):
+    ##############
+    ### Statements
+
+    def __handle_save(self):
         self.advance()
-        if self.currentToken.text != ":=": self.error("Can only use :=")
-        self.advance()
-        return self.expectRegister()
+        x = self.expect_register()
+        self.emitter.LOAD(x)
 
-    def handleSprite(self): 
+    def __handle_load(self):
         self.advance()
-        x = self.expectRegister()
-        self.advance()
-        y = self.expectRegister()
-        self.advance()
-        n = self.expectNumber()
-        return self.emitter.SPRITE(x, y, n)
+        x = self.expect_register()
+        self.emitter.SAVE(x)
 
+    def __handle_jump(self):
+        self.emitter.JMP(self.jump_target())
 
-    oppOp = {
+    def __handle_jump0(self):
+        self.emitter.JMP0(self.jump_target())
+
+    def jump_target(self):
+        """ Used by handle_jump and handle_jump0 """
+        self.advance()
+        num = self.accept_address()
+        return num if num is not None else self.current_token
+
+    def __handle_loop(self):
+        self.emitter.start_loop()
+
+    def __handle_again(self):
+        self.emitter.end_loop()
+
+    def __handle_hires(self):
+        return self.emitter.HIRES()
+
+    def __handle_lores(self):
+        return self.emitter.LORES()
+
+    def __handle_delay(self):
+        self.emitter.STD(self.__delay_or_buzzer_target())
+
+    def __handle_buzzer(self):
+        self.emitter.STB(self.__delay_or_buzzer_target())
+
+    def __delay_or_buzzer_target(self):
+        self.advance()
+        if self.current_token.text != ":=":
+            self.error("Can only use :=")
+        self.advance()
+        return self.expect_register()
+
+    def __handle_sprite(self):
+        self.advance()
+        x_coord = self.expect_register()
+        self.advance()
+        y_coord = self.expect_register()
+        self.advance()
+        lines = self.expect_number()
+        return self.emitter.SPRITE(x_coord, y_coord, lines)
+
+    ################
+    ### Conditionals
+
+    dualOp = {
         "==": "!=",
         "!=": "==",
         ">": "<=",
@@ -262,90 +304,77 @@ class Parser():
         "-key": "key",
     }
 
-    def trackEnd(self):
-        pass
-
-    def handleIf(self):
+    def __handle_if(self):
         self.advance()
-        a = self.expectRegister()
+        a = self.expect_register()
         op = self.advance().text
-        bn = None
-        br = None
+        b_num = None
+        b_reg = None
         if op not in ("key", "-key"):
-            self.advance().text
-            bn = self.acceptNumber()
-            if bn == None:
-                br = self.expectRegister()
+            self.advance()
+            b_num = self.accept_number()
+            if b_num is None:
+                b_reg = self.expect_register()
 
-        isNum = bn != None
         body = self.advance().text
 
-        if body not in ("begin", "then"): self.error("Expected begin or then")
+        if body not in ("begin", "then"):
+            self.error("Expected begin or then")
 
-        if body == "begin": op = self.oppOp[op]
+        if body == "begin":
+            op = self.dualOp[op]
 
-        # loads for comparison subtraction
-        if op in ("<", ">", "<=", ">="): 
-            if isNum: self.emitter.LDN(0xF, bn)
-            else: self.emitter.ALU(0xF, br, 0)
+        self.__if_handle_comparison(op, a, b_num, b_reg)
 
-        # subtraction for comparison
-        if op in (">", "<="): self.emitter.ALU(0xF, a, 5)
-        if op in ("<", ">="): self.emitter.ALU(0xF, a, 7) 
+        self.__if_emit_skip(op, a, b_num, b_reg)
 
-        # Handle key
-        if op == "-key": self.emitter.SKNP(a)
-        elif op == "key": self.emitter.SKP(a)
-        # handle reg
-        elif op == "==":
-            if isNum: self.emitter.SNEN(a, bn)
-            else: self.emitter.SNER(a, br)
-        elif op == "!=":
-            if isNum: self.emitter.SEN(a, bn)
-            else: self.emitter.SER(a, br)
-        elif op in ("<", ">"): self.emitter.SNEN(0xf, 0)
-        elif op in ("<=", ">="): self.emitter.SEN(0xf, 0)
+        if body == "begin":
+            self.emitter.emit_begin()
 
-        if body == "begin": self.emitter.pushEndJump()
-
-
-    def handleElse(self):
-        self.emitter.popEndJump(2)
-        self.emitter.pushEndJump()
-
-    def handleEnd(self): self.emitter.popEndJump()
-
-    def handleReturn(self): self.emitter.RET()
-
-    def handleBareCall(self):
-        num = self.acceptAddress()
-        if num != None:
-            self.emitter.emitByte(num)
-            return
-
-        try:
-            name = self.expectIdent()
-        except ParseError:
-            raise self.error("expected a number or identifier to start a statement. (Is there an error just before this?)")
-        self.emitter.CALL(name)
-
-    def expectProgramLine(self):
-        startToken = self.currentToken
-        try:
-            cur = self.currentToken.text
-            if cur in self.macros: self.emitMacro()
-            elif cur in self.registers: self.expectRegisterOperation()
-            elif cur == ":": self.handleLabel()
-            elif cur == ";": self.handleReturn()
+    def __if_handle_comparison(self, op, a, b_num, b_reg):
+        # Load the right side of the conditional into VF for comparison subtraction.
+        if op in ("<", ">", "<=", ">="):
+            if b_num is not None:
+                self.emitter.LDN(0xF, b_num)
             else:
-                methname = cur.replace(":", "").capitalize()
-                meth = getattr(self, "handle{}".format(methname), self.handleBareCall)
-                meth()
-        except Exception as e:
-            raise ParseError("Statement start", startToken) from e
+                self.emitter.ALU(0xF, b_reg, 0)
+
+        # Do subtraction for comparison
+        if op in (">", "<="):
+            self.emitter.ALU(0xF, a, 5)
+        if op in ("<", ">="):
+            self.emitter.ALU(0xF, a, 7)
 
 
+    def __if_emit_skip(self, op, a, b_num, b_reg):
+        # Handle key
+        if op == "-key":
+            self.emitter.SKNP(a)
+        elif op == "key":
+            self.emitter.SKP(a)
+        # Handle SNE/SE variants
+        elif op == "==":
+            if b_num is not None:
+                self.emitter.SNEN(a, b_num)
+            else:
+                self.emitter.SNER(a, b_reg)
+        elif op == "!=":
+            if b_num is not None:
+                self.emitter.SEN(a, b_num)
+            else:
+                self.emitter.SER(a, b_reg)
+        elif op in ("<", ">"):
+            self.emitter.SNEN(0xf, 0)
+        elif op in ("<=", ">="):
+            self.emitter.SEN(0xf, 0)
 
+    def __handle_else(self):
+        if not self.emitter.emit_else():
+            self.error("unexpected else")
 
+    def __handle_end(self):
+        if not self.emitter.emit_end():
+            self.error("unexpected end")
 
-
+    def __handle_return(self):
+        self.emitter.RET()
