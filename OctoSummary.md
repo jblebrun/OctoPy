@@ -30,8 +30,8 @@ Corresponding Chip8 pneumonics and opcodes are included, when relevant.
 * `hires` `HIGH (00FF)`
 * `lores` `LOW (00FE)`
 * `scroll-down n` `SCD n (00Cn)` 
-* `scroll-left` `SCR (00FB)`
-* `scroll-right` `(SCL (00FC)`
+* `scroll-left` `SCL (00FB)`
+* `scroll-right` `(SCR (00FC)`
 * `exit` `EXIT (00FD)`
 * `saveflags vx` `LD R, Vx (Fx75)`
 * `loadflags vx` `LD Vx, R (Fx85)`

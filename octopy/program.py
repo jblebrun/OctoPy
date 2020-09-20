@@ -51,8 +51,16 @@ class Program():
 
     def SYS(self, n):
         self.__n_op(0, n)
+    def SCD(self, n):
+        self.SYS(0xC << 4 | n)
     def RET(self):
         self.SYS(0xEE)
+    def SCR(self):
+        self.SYS(0xFB)
+    def SCL(self):
+        self.SYS(0xFC)
+    def EXIT(self):
+        self.SYS(0xFD)
     def LORES(self):
         self.SYS(0xFE)
     def HIRES(self):
@@ -106,10 +114,16 @@ class Program():
         self.FX(x, 0x29)
     def LDBIGHEX(self, x):
         self.FX(x, 0x30)
-    def LOAD(self, x):
-        self.FX(x, 0x55)
+    def BCD(self, x):
+        self.FX(x, 0x33)
     def SAVE(self, x):
+        self.FX(x, 0x55)
+    def LOAD(self, x):
         self.FX(x, 0x65)
+    def SAVEFLAGS(self, x):
+        self.FX(x, 0x75)
+    def LOADFLAGS(self, x):
+        self.FX(x, 0x85)
 
     def track_label(self, name):
         if self.__pc() == 0 and name != "main":
@@ -140,7 +154,7 @@ class Program():
     def resolve(self):
         for (token, location) in self.unresolved:
             if token.text not in self.labels:
-                raise ParseError("Unresolved nam", token)
+                raise ParseError("Unresolved name", token)
             op = self.program[location] >> 4
             target = 0x200 + (op << 12 | self.labels[token.text])
             self.program[location] = target >> 8

@@ -119,7 +119,7 @@ class Parser():
                 if num is not None:
                     self.emitter.emit_byte(num)
                 else:
-                    methname = "_Parser__handle_{}".format(cur.replace(":", ""))
+                    methname = "_Parser__handle_{}".format(cur.replace(":", "").replace("-", "_"))
                     meth = getattr(self, methname, self.named_call)
                     meth()
         except Exception as e:
@@ -231,16 +231,39 @@ class Parser():
 
     ##############
     ### Statements
+    def __handle_exit(self):
+        self.emitter.EXIT()
+
+    def __handle_scroll_down(self):
+        self.advance()
+        n = self.expect_number()
+        self.emitter.SCD(n)
+
+    def __handle_scroll_left(self):
+        self.emitter.SCL()
+
+    def __handle_scroll_right(self):
+        self.emitter.SCR()
+
+    def __fx_op(self, emitter_function):
+        self.advance()
+        x = self.expect_register()
+        emitter_function(x)
 
     def __handle_save(self):
-        self.advance()
-        x = self.expect_register()
-        self.emitter.LOAD(x)
+        self.__fx_op(self.emitter.SAVE)
 
     def __handle_load(self):
-        self.advance()
-        x = self.expect_register()
-        self.emitter.SAVE(x)
+        self.__fx_op(self.emitter.LOAD)
+
+    def __handle_saveflags(self):
+        self.__fx_op(self.emitter.SAVEFLAGS)
+
+    def __handle_loadflags(self):
+        self.__fx_op(self.emitter.LOADFLAGS)
+
+    def __handle_bcd(self):
+        self.__fx_op(self.emitter.BCD)
 
     def __handle_jump(self):
         self.emitter.JMP(self.jump_target())
