@@ -9,6 +9,14 @@ jobs:
 
     steps: 
       - uses: actions/checkout@v2
+      - uses: actions/setup-python@v1
+
+      - name: Install Pylint
+        run: pip install pylint
+
+      - name: Lint
+        run: pylint octopy
+
       - name: Run Tests
         run: make test
 

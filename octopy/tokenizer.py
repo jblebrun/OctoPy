@@ -1,41 +1,35 @@
-import re
-import traceback
-import sys
+from typing import NamedTuple
 
+class Token(NamedTuple):
+    text: str
+    line: int
+    field: int
 
-class Token():
-    def __init__(self, text, line, field):
-        self.text = text
-        self.line = line
-        self.field = field
-    
     def __repr__(self):
-        return "`{0.text}` (at line {0.line} field {0.field})".format(self)
+        return "`{}` (at line {} field {})".format(self.text, self.line, self.field)
 
 # Strip out whitespace and comments while tokenizing
 def tokenize(source):
-    for ln, line in enumerate(source):
-        
-        fields = line.split()
-        tokenizingString = False
+    for line_num, line in enumerate(source):
 
-        for fn, field in enumerate(fields):
+        fields = line.split()
+
+        for field_num, field in enumerate(fields):
             # Comments will consume the rest of the line, so we can ignore
             if field.startswith("#"):
                 break
 
-            if field.startswith("\""):
-                tokenizingString = True
-                
-            currentToken = Token(field, ln+1, fn+1)
-            yield currentToken
-
+            yield Token(field, line_num+1, field_num+1)
 
 def maptokens(tokens, mapping):
-    def convertToken(token):
+    """
+    A helper that takes a sequence of tokens and returns a generator that
+    produces the sequence of tokens, but for any token that appears as a key in the
+    provided mapping, the map value will be provided, instead.
+    """
+    def convert_token(token):
         if token.text in mapping:
             return Token(mapping[token.text], token.line, token.field)
         return token
 
-    return (convertToken(t) for t in tokens)
-    
+    return (convert_token(t) for t in tokens)
