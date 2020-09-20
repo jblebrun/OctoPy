@@ -3,7 +3,7 @@
 A short summary of all of the directives and statements supported by Octo.
 Corresponding Chip8 pneumonics and opcodes are included, when relevant.
 
-##Directives
+## Directives
 
 * `: <labelname>` - Track address for call/jump resolution.
 * `:alias <dstname> <srcreg>` - Track new register name
@@ -17,7 +17,7 @@ Corresponding Chip8 pneumonics and opcodes are included, when relevant.
 * `:unpack MSB <addr>` -
 
 
-##Statements
+## Statements
 
 * `return` (also `;`) `RET (00EE)`
 * `clear` `CLS (00E0)`
