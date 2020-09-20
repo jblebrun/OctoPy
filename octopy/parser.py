@@ -265,16 +265,6 @@ class Parser():
     def trackEnd(self):
         pass
 
-    # r == n -> SNE R, N
-    # r != n -> SE R,
-    # r > n -> LD VF, N; SUB R; SNE VF, 0
-    # r < n -> LD VF, N; NSUB R; SNE VF, 0
-    # r >= n -> LD VF N; NSUB R; SE VF, 0
-    # r <= n -> LD VF N; SUB R; SE VF, 0
-    # key -> SKP
-    # -key -> SKNP
-    # But if begin, instead of then:
-    # reverse SNE/SNE and emit JMP.
     def handleIf(self):
         self.advance()
         a = self.expectRegister()
