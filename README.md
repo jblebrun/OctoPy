@@ -1,5 +1,5 @@
 # OctoPy
-Compiler for John Earnest's Octo Chip-8\* assembly language, written in Python
+A python implementation of an assembler for [John Earnest's Octo](https://github.com/JohnEarnest/Octo), a  CHIP-8/SCHIP-8 assembly language.
 
 
 ## Why?
