@@ -1,4 +1,5 @@
 from typing import NamedTuple
+from octopy.calc import calc
 from octopy.errors import ParseError
 
 class Macro(NamedTuple):
@@ -78,6 +79,15 @@ class Parser():
         src = self.tokenizer.next_register()
         self.tokenizer.add_register(dst, src)
 
+    def __handle_calc(self):
+        name = self.tokenizer.next_ident()
+        if self.tokenizer.advance().text != "{":
+            self.error("expected { to start calc expression")
+        tokens = self.__token_cluster()
+        calc_tokenizer = self.tokenizer.maptokenizer(reversed(tokens), {})
+        value = calc(calc_tokenizer)
+        self.tokenizer.add_const(name, value)
+
     def __handle_const(self):
         name = self.tokenizer.next_ident()
         value = self.tokenizer.advance(self.tokenizer.expect_number)
@@ -90,12 +100,17 @@ class Parser():
         while arg != "{":
             args.append(arg)
             arg = self.tokenizer.advance().text
+        tokens = self.__token_cluster()
+        self.macros[name] = Macro(name, args, tokens)
+
+    def __token_cluster(self):
         tokens = []
         token = self.tokenizer.advance()
         while token.text != "}":
             tokens.append(token)
             token = self.tokenizer.advance()
-        self.macros[name] = Macro(name, args, tokens)
+        return tokens
+
 
     ##############
     ### Operations
