@@ -42,8 +42,10 @@ class Parser():
     def error(self, msg):
         raise ParseError(msg, self.current_token)
 
-    def advance(self):
+    def advance(self, matcher=None):
         self.current_token = next(self.tokens, None)
+        if matcher is not None:
+            return matcher()
         return self.current_token
 
     def emit_macro(self):
@@ -58,47 +60,49 @@ class Parser():
         self.parse()
         self.tokens = pgmtokens
 
+    def expect(self, matcher, msg):
+        res = matcher()
+        if res is None:
+            self.error("Expected {}".format(msg))
+        return res
+
     def expect_ident(self):
         if not validIdent.match(self.current_token.text):
             self.error("Expected an identifier")
-        return self.current_token.text
+        return self.current_token
 
     def accept_register(self):
         return self.registers.get(self.current_token.text, None)
 
     def expect_register(self):
-        reg = self.accept_register()
-        if reg is None:
-            self.error("expected a register")
-        return reg
+        return self.expect(self.accept_register, "register")
 
-    def accept_number(self):
+    def parse_number(self, low, high):
         try:
             num = int(self.current_token.text, 0)
-            if num < -127 or num > 255:
-                self.error("invalid byte number")
-            if num < 0:
-                num = num & 0xFF
-            return num
         except ValueError:
             return None
+        if num < low or num > high:
+            self.error("number out of range")
+        return num & high
+
+    def accept_nybble(self):
+        return self.parse_number(-0x7, 0xF)
+
+    def accept_byte(self):
+        return self.parse_number(-0x7F, 0xFF)
 
     def accept_address(self):
-        try:
-            num = int(self.current_token.text, 0)
-            if num < -0x7FF or num > 0xFFF:
-                self.error("invalid address number")
-            if num < 0:
-                num = num & 0xFFF
-        except ValueError:
-            return None
-        return num
+        return self.parse_number(-0x7FF, 0xFFF)
 
-    def expect_number(self):
-        num = self.accept_number()
-        if num is None:
-            self.error("expected a number")
-        return num
+    def expect_nybble(self):
+        return self.expect(self.accept_nybble, "nybble")
+
+    def expect_byte(self):
+        return self.expect(self.accept_byte, "byte")
+
+    def expect_address(self):
+        return self.expect(self.accept_address, "address")
 
     def __expect_statement(self):
         start_type = "Parsing Statement"
@@ -115,7 +119,7 @@ class Parser():
             elif cur == ";":
                 self.__handle_return()
             else:
-                num = self.accept_number()
+                num = self.accept_byte()
                 if num is not None:
                     self.emitter.emit_byte(num)
                 else:
@@ -126,22 +130,18 @@ class Parser():
             raise ParseError("{}".format(start_type), start_token) from e
 
     def named_call(self):
-        self.expect_ident()
-        self.emitter.CALL(self.current_token)
+        self.emitter.CALL(self.expect_ident())
 
     ###############
     #### Directives
 
     def __handle_label(self):
-        self.advance()
-        name = self.expect_ident()
-        self.emitter.track_label(name)
+        name = self.advance(self.expect_ident)
+        self.emitter.track_label(name.text)
 
     def __handle_alias(self):
-        self.advance()
-        dst = self.expect_ident()
-        self.advance()
-        src = self.expect_register()
+        dst = self.advance(self.expect_ident).text
+        src = self.advance(self.expect_register)
         self.registers[dst] = src
 
     def __handle_macro(self):
@@ -174,9 +174,7 @@ class Parser():
 
         if self.current_token.text in ("hex", "bighex"):
             f = self.emitter.LDHEX if self.current_token.text == "hex" else self.emitter.LDBIGHEX
-            self.advance()
-            src = self.expect_register()
-            f(src)
+            f(self.advance(self.expect_register))
             return
 
         num = self.accept_address()
@@ -184,14 +182,13 @@ class Parser():
             self.emitter.LDI(num)
             return
 
-        self.expect_ident()
-        self.emitter.LDI(self.current_token)
+        self.emitter.LDI(self.expect_ident())
 
     def __expect_register_operation(self):
         dst = self.registers[self.current_token.text]
         op = self.advance().text
         src = self.advance().text
-        srcnum = self.accept_number()
+        srcnum = self.accept_byte()
 
         if src in self.registers:
             self.__register_register_op(op, dst, src)
@@ -202,8 +199,7 @@ class Parser():
         elif src == "key":
             self.emitter.LDK(dst)
         elif src == "random":
-            self.advance()
-            mask = self.expect_number()
+            mask = self.advance(self.expect_byte)
             self.emitter.RAND(dst, mask)
         else: raise self.error("Unknown operand")
 
@@ -221,6 +217,7 @@ class Parser():
         "+=": 4, "-=": 5, ">>=": 6, "=-": 7,
         "<<=": 0xE
     }
+
     def __register_register_op(self, op, dst, src):
         try:
             subcode = self.aluOps[op]
@@ -235,8 +232,7 @@ class Parser():
         self.emitter.EXIT()
 
     def __handle_scroll_down(self):
-        self.advance()
-        n = self.expect_number()
+        n = self.advance(self.expect_nybble)
         self.emitter.SCD(n)
 
     def __handle_scroll_left(self):
@@ -246,8 +242,7 @@ class Parser():
         self.emitter.SCR()
 
     def __fx_op(self, emitter_function):
-        self.advance()
-        x = self.expect_register()
+        x = self.advance(self.expect_register)
         emitter_function(x)
 
     def __handle_save(self):
@@ -273,9 +268,8 @@ class Parser():
 
     def jump_target(self):
         """ Used by handle_jump and handle_jump0 """
-        self.advance()
-        num = self.accept_address()
-        return num if num is not None else self.current_token
+        num = self.advance(self.accept_address)
+        return num if num is not None else self.expect_ident()
 
     def __handle_loop(self):
         self.emitter.start_loop()
@@ -299,41 +293,32 @@ class Parser():
         self.advance()
         if self.current_token.text != ":=":
             self.error("Can only use :=")
-        self.advance()
-        return self.expect_register()
+        return self.advance(self.expect_register)
 
     def __handle_sprite(self):
-        self.advance()
-        x_coord = self.expect_register()
-        self.advance()
-        y_coord = self.expect_register()
-        self.advance()
-        lines = self.expect_number()
-        return self.emitter.SPRITE(x_coord, y_coord, lines)
+        x = self.advance(self.expect_register)
+        y = self.advance(self.expect_register)
+        lines = self.advance(self.expect_nybble)
+        return self.emitter.SPRITE(x, y, lines)
 
     ################
     ### Conditionals
 
     dualOp = {
-        "==": "!=",
-        "!=": "==",
-        ">": "<=",
-        "<": ">=",
-        ">=": "<",
-        "<=": ">",
-        "key": "-key",
-        "-key": "key",
+        "==": "!=", "!=": "==",
+        ">": "<=", "<": ">=",
+        ">=": "<", "<=": ">",
+        "key": "-key", "-key": "key",
     }
 
     def __handle_if(self):
-        self.advance()
-        a = self.expect_register()
+        a = self.advance(self.expect_register)
         op = self.advance().text
         b_num = None
         b_reg = None
         if op not in ("key", "-key"):
             self.advance()
-            b_num = self.accept_number()
+            b_num = self.accept_byte()
             if b_num is None:
                 b_reg = self.expect_register()
 
