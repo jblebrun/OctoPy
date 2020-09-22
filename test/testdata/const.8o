@@ -1,0 +1,8 @@
+:const SIZE 3
+:const LOC 0x500
+
+: main
+    i := LOC
+    sprite v0 v1 SIZE
+
+    if v3 == SIZE then v3 += 1

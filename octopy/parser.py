@@ -1,4 +1,6 @@
+import math
 import re
+
 from typing import NamedTuple
 from octopy.tokenizer import maptokens
 
@@ -26,6 +28,7 @@ validIdent = re.compile("[a-zA-Z_][0-9a-zA-Z-_]*")
 class Parser():
     def __init__(self, tokens, emitter):
         self.registers = self.registers = {"v"+hex(i)[2:]: i for i in range(0, 16)}
+        self.consts = { "PI": math.pi, "E": math.e }
         self.tokens = tokens
         self.emitter = emitter
         self.macros = {}
@@ -77,23 +80,32 @@ class Parser():
     def expect_register(self):
         return self.expect(self.accept_register, "register")
 
-    def parse_number(self, low, high):
+    def parse_number(self):
+        if self.current_token.text in self.consts:
+            return self.consts[self.current_token.text]
+
         try:
             num = int(self.current_token.text, 0)
         except ValueError:
+            return None
+        return num
+
+    def accept_ranged_number(self, low, high):
+        num = self.parse_number()
+        if num is None:
             return None
         if num < low or num > high:
             self.error("number out of range")
         return num & high
 
     def accept_nybble(self):
-        return self.parse_number(-0x7, 0xF)
+        return self.accept_ranged_number(-0x7, 0xF)
 
     def accept_byte(self):
-        return self.parse_number(-0x7F, 0xFF)
+        return self.accept_ranged_number(-0x7F, 0xFF)
 
     def accept_address(self):
-        return self.parse_number(-0x7FF, 0xFFF)
+        return self.accept_ranged_number(-0x7FF, 0xFFF)
 
     def expect_nybble(self):
         return self.expect(self.accept_nybble, "nybble")
@@ -103,6 +115,9 @@ class Parser():
 
     def expect_address(self):
         return self.expect(self.accept_address, "address")
+
+    def expect_number(self):
+        return self.expect(self.parse_number, "number")
 
     def __expect_statement(self):
         start_type = "Parsing Statement"
@@ -143,6 +158,11 @@ class Parser():
         dst = self.advance(self.expect_ident).text
         src = self.advance(self.expect_register)
         self.registers[dst] = src
+
+    def __handle_const(self):
+        dst = self.advance(self.expect_ident).text
+        src = self.advance(self.expect_number)
+        self.consts[dst] = src
 
     def __handle_macro(self):
         name = self.advance().text
