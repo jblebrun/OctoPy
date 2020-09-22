@@ -28,7 +28,7 @@ validIdent = re.compile("[a-zA-Z_][0-9a-zA-Z-_]*")
 class Parser():
     def __init__(self, tokens, emitter):
         self.registers = self.registers = {"v"+hex(i)[2:]: i for i in range(0, 16)}
-        self.consts = { "PI": math.pi, "E": math.e }
+        self.consts = {"PI": math.pi, "E": math.e}
         self.tokens = tokens
         self.emitter = emitter
         self.macros = {}

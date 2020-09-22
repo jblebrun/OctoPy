@@ -1,0 +1,15 @@
+:alias saved v2
+:alias score ve
+
+: main
+    hires
+    lores
+    bcd score
+    load score
+    save va
+    saveflags v7
+    loadflags saved
+    scroll-down 7
+    scroll-left
+    scroll-right
+    exit
