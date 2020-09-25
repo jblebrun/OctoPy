@@ -1,6 +1,6 @@
 [MESSAGES CONTROL]
 
-disable=C0114, C0115, C0116
+disable=C0114, C0115, C0116, R0904
 
 [BASIC]
 good-names=x,e,op,n,y,a,f

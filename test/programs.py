@@ -3,7 +3,7 @@ import os
 import sys
 
 from octopy.parser import Parser
-from octopy.tokenizer import tokenize
+from octopy.tokenizer import Tokenizer 
 from octopy.program import Program
 
 curdir = os.path.dirname(__file__) 
@@ -51,7 +51,7 @@ class TestPrograms(unittest.TestCase, metaclass=MetaTest):
         srcfile = filehere("{}.8o".format(name))
         with open(srcfile) as src:
             p = Program()
-            Parser(tokenize(src), p)
+            Parser(Tokenizer(src), p)
 
         # Generate the comparisons for each 16 byte group
         pc = 0

@@ -1,7 +1,7 @@
 import sys
 import traceback
 from octopy.parser import Parser, ParseError
-from octopy.tokenizer import tokenize
+from octopy.tokenizer import Tokenizer
 from octopy.program import Program
 
 def print_error(err):
@@ -27,7 +27,7 @@ if __name__ == "__main__":
 
     p = Program()
     try:
-        Parser(tokenize(f), p)
+        Parser(Tokenizer(f), p)
 
     except ParseError as error:
         print_error(error)
