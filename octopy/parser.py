@@ -1,8 +1,4 @@
-import math
-import re
-
 from typing import NamedTuple
-from octopy.tokenizer import maptokens
 from octopy.errors import ParseError
 
 class Macro(NamedTuple):
@@ -15,118 +11,49 @@ class Macro(NamedTuple):
     def __repr__(self):
         return "{}({}): <{}>".format(self.name, self.args, self.tokens)
 
-validIdent = re.compile("[a-zA-Z_][0-9a-zA-Z-_]*")
-
 class Parser():
-    def __init__(self, tokens, emitter):
-        self.registers = self.registers = {"v"+hex(i)[2:]: i for i in range(0, 16)}
-        self.consts = {"PI": math.pi, "E": math.e}
-        self.tokens = tokens
+    def __init__(self, tokenizer, emitter):
         self.emitter = emitter
         self.macros = {}
-        self.current_token = None
-        self.advance()
+        self.tokenizer = tokenizer
+        self.tokenizer.advance()
         self.parse()
         self.emitter.resolve()
 
     def parse(self):
-        while self.current_token is not None:
+        while self.tokenizer.current() is not None:
             self.__expect_statement()
-            self.advance()
+            self.tokenizer.advance()
 
     def error(self, msg):
-        raise ParseError(msg, self.current_token)
-
-    def advance(self, matcher=None):
-        self.current_token = next(self.tokens, None)
-        if matcher is not None:
-            return matcher()
-        return self.current_token
+        raise ParseError(msg, self.tokenizer.current())
 
     def emit_macro(self):
         """
         Swap out the program tokens for this macro, and then parse normally.
         """
-        macro = self.macros[self.current_token.text]
-        macroargs = {k:self.advance().text for k in macro.args}
-        pgmtokens = self.tokens
-        self.tokens = maptokens(macro.tokens, macroargs)
-        self.advance()
-        self.parse()
-        self.tokens = pgmtokens
-
-    def expect(self, matcher, msg):
-        res = matcher()
-        if res is None:
-            self.error("Expected {}".format(msg))
-        return res
-
-    def expect_ident(self):
-        if not validIdent.match(self.current_token.text):
-            self.error("Expected an identifier")
-        return self.current_token
-
-    def accept_register(self):
-        return self.registers.get(self.current_token.text, None)
-
-    def expect_register(self):
-        return self.expect(self.accept_register, "register")
-
-    def parse_number(self):
-        if self.current_token.text in self.consts:
-            return self.consts[self.current_token.text]
-
-        try:
-            num = int(self.current_token.text, 0)
-        except ValueError:
-            return None
-        return num
-
-    def accept_ranged_number(self, low, high):
-        num = self.parse_number()
-        if num is None:
-            return None
-        if num < low or num > high:
-            self.error("number out of range")
-        return num & high
-
-    def accept_nybble(self):
-        return self.accept_ranged_number(-0x7, 0xF)
-
-    def accept_byte(self):
-        return self.accept_ranged_number(-0x7F, 0xFF)
-
-    def accept_address(self):
-        return self.accept_ranged_number(-0x7FF, 0xFFF)
-
-    def expect_nybble(self):
-        return self.expect(self.accept_nybble, "nybble")
-
-    def expect_byte(self):
-        return self.expect(self.accept_byte, "byte")
-
-    def expect_address(self):
-        return self.expect(self.accept_address, "address")
-
-    def expect_number(self):
-        return self.expect(self.parse_number, "number")
+        macro = self.macros[self.tokenizer.current().text]
+        macroargs = {k:self.tokenizer.next_ident() for k in macro.args}
+        macro_tokenizer = self.tokenizer.maptokenizer(macro.tokens, macroargs)
+        macro_parser = Parser(macro_tokenizer, self.emitter)
+        macro_parser.parse()
 
     def __expect_statement(self):
         start_type = "Parsing Statement"
         try:
-            start_token = self.current_token
-            cur = self.current_token.text
+            start_token = self.tokenizer.current()
+            cur = self.tokenizer.current().text
             if cur in self.macros:
                 start_type = "Emitting Macro"
                 self.emit_macro()
-            elif cur in self.registers:
+            elif self.tokenizer.accept_register() is not None:
                 self.__expect_register_operation()
             elif cur == ":":
                 self.__handle_label()
             elif cur == ";":
                 self.__handle_return()
             else:
-                num = self.accept_byte()
+                num = self.tokenizer.accept_byte()
                 if num is not None:
                     self.emitter.emit_byte(num)
                 else:
@@ -137,73 +64,70 @@ class Parser():
             raise ParseError("{}".format(start_type), start_token) from e
 
     def named_call(self):
-        self.emitter.CALL(self.expect_ident())
+        self.emitter.CALL(self.tokenizer.expect_ident())
 
     ###############
     #### Directives
 
     def __handle_label(self):
-        name = self.advance(self.expect_ident)
-        self.emitter.track_label(name.text)
+        name = self.tokenizer.next_ident()
+        self.emitter.track_label(name)
 
     def __handle_alias(self):
-        dst = self.advance(self.expect_ident).text
-        src = self.advance(self.expect_register)
-        self.registers[dst] = src
+        dst = self.tokenizer.next_ident()
+        src = self.tokenizer.next_register()
+        self.tokenizer.add_register(dst, src)
 
     def __handle_const(self):
-        dst = self.advance(self.expect_ident).text
-        src = self.advance(self.expect_number)
-        self.consts[dst] = src
+        name = self.tokenizer.next_ident()
+        value = self.tokenizer.advance(self.tokenizer.expect_number)
+        self.tokenizer.add_const(name, value)
 
     def __handle_macro(self):
-        name = self.advance().text
+        name = self.tokenizer.next_ident()
         args = []
-        arg = self.advance().text
+        arg = self.tokenizer.advance().text
         while arg != "{":
             args.append(arg)
-            arg = self.advance().text
+            arg = self.tokenizer.advance().text
         tokens = []
-        token = self.advance()
+        token = self.tokenizer.advance()
         while token.text != "}":
             tokens.append(token)
-            token = self.advance()
+            token = self.tokenizer.advance()
         self.macros[name] = Macro(name, args, tokens)
 
     ##############
     ### Operations
 
     def __handle_i(self):
-        op = self.advance().text
-        self.advance()
+        op = self.tokenizer.advance().text
+        self.tokenizer.advance()
         if op == "+=":
-            reg = self.expect_register()
+            reg = self.tokenizer.expect_register()
             self.emitter.ADDI(reg)
             return
 
         if op != ":=":
             self.error("Only := or += for i")
 
-        if self.current_token.text in ("hex", "bighex"):
-            f = self.emitter.LDHEX if self.current_token.text == "hex" else self.emitter.LDBIGHEX
-            f(self.advance(self.expect_register))
+        curtext = self.tokenizer.current().text
+        if curtext in ("hex", "bighex"):
+            f = self.emitter.LDHEX if curtext == "hex" else self.emitter.LDBIGHEX
+            f(self.tokenizer.next_register())
             return
 
-        num = self.accept_address()
-        if num is not None:
-            self.emitter.LDI(num)
-            return
-
-        self.emitter.LDI(self.expect_ident())
+        self.emitter.LDI(self.tokenizer.expect_location())
 
     def __expect_register_operation(self):
-        dst = self.registers[self.current_token.text]
-        op = self.advance().text
-        src = self.advance().text
-        srcnum = self.accept_byte()
+        dst = self.tokenizer.expect_register()
+        op = self.tokenizer.advance().text
+        src = self.tokenizer.advance().text
+        srcnum = self.tokenizer.accept_byte()
+        reg = self.tokenizer.accept_register()
 
-        if src in self.registers:
-            self.__register_register_op(op, dst, src)
+        if reg is not None:
+            self.__register_register_op(op, dst)
         elif srcnum is not None:
             self.__register_const_op(op, dst, srcnum)
         elif src == "delay":
@@ -211,7 +135,7 @@ class Parser():
         elif src == "key":
             self.emitter.LDK(dst)
         elif src == "random":
-            mask = self.advance(self.expect_byte)
+            mask = self.tokenizer.next_byte()
             self.emitter.RAND(dst, mask)
         else: raise self.error("Unknown operand")
 
@@ -230,12 +154,12 @@ class Parser():
         "<<=": 0xE
     }
 
-    def __register_register_op(self, op, dst, src):
+    def __register_register_op(self, op, dst):
         try:
             subcode = self.aluOps[op]
         except KeyError:
             self.error("unknown register op")
-        self.emitter.ALU(dst, self.registers[src], subcode)
+        self.emitter.ALU(dst, self.tokenizer.expect_register(), subcode)
 
 
     ##############
@@ -244,7 +168,7 @@ class Parser():
         self.emitter.EXIT()
 
     def __handle_scroll_down(self):
-        n = self.advance(self.expect_nybble)
+        n = self.tokenizer.next_nybble()
         self.emitter.SCD(n)
 
     def __handle_scroll_left(self):
@@ -254,7 +178,7 @@ class Parser():
         self.emitter.SCR()
 
     def __fx_op(self, emitter_function):
-        x = self.advance(self.expect_register)
+        x = self.tokenizer.next_register()
         emitter_function(x)
 
     def __handle_save(self):
@@ -273,15 +197,10 @@ class Parser():
         self.__fx_op(self.emitter.BCD)
 
     def __handle_jump(self):
-        self.emitter.JMP(self.jump_target())
+        self.emitter.JMP(self.tokenizer.next_location())
 
     def __handle_jump0(self):
-        self.emitter.JMP0(self.jump_target())
-
-    def jump_target(self):
-        """ Used by handle_jump and handle_jump0 """
-        num = self.advance(self.accept_address)
-        return num if num is not None else self.expect_ident()
+        self.emitter.JMP0(self.tokenizer.next_location())
 
     def __handle_loop(self):
         self.emitter.start_loop()
@@ -302,15 +221,15 @@ class Parser():
         self.emitter.STB(self.__delay_or_buzzer_target())
 
     def __delay_or_buzzer_target(self):
-        self.advance()
-        if self.current_token.text != ":=":
+        self.tokenizer.advance()
+        if self.tokenizer.current().text != ":=":
             self.error("Can only use :=")
-        return self.advance(self.expect_register)
+        return self.tokenizer.next_register()
 
     def __handle_sprite(self):
-        x = self.advance(self.expect_register)
-        y = self.advance(self.expect_register)
-        lines = self.advance(self.expect_nybble)
+        x = self.tokenizer.next_register()
+        y = self.tokenizer.next_register()
+        lines = self.tokenizer.next_nybble()
         return self.emitter.SPRITE(x, y, lines)
 
     ################
@@ -324,17 +243,17 @@ class Parser():
     }
 
     def __handle_if(self):
-        a = self.advance(self.expect_register)
-        op = self.advance().text
+        a = self.tokenizer.next_register()
+        op = self.tokenizer.advance().text
         b_num = None
         b_reg = None
         if op not in ("key", "-key"):
-            self.advance()
-            b_num = self.accept_byte()
+            self.tokenizer.advance()
+            b_num = self.tokenizer.accept_byte()
             if b_num is None:
-                b_reg = self.expect_register()
+                b_reg = self.tokenizer.expect_register()
 
-        body = self.advance().text
+        body = self.tokenizer.advance().text
 
         if body not in ("begin", "then"):
             self.error("Expected begin or then")

@@ -7,3 +7,4 @@
     noargs
     v2 := 5
     noargs
+    v6 := v7
