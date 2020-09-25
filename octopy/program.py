@@ -1,4 +1,4 @@
-from octopy.parser import ParseError
+from octopy.errors import ParseError
 from octopy.tokenizer import Token
 
 # pylint: disable=too-many-public-methods
