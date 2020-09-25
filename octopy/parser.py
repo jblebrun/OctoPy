@@ -3,15 +3,7 @@ import re
 
 from typing import NamedTuple
 from octopy.tokenizer import maptokens
-
-class ParseError(Exception):
-    def __init__(self, msg, token):
-        super().__init__(msg)
-        self.msg = msg
-        self.token = token
-
-    def __str__(self):
-        return "{}: {}".format(self.token, self.msg)
+from octopy.errors import ParseError
 
 class Macro(NamedTuple):
     """
