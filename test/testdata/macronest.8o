@@ -1,0 +1,7 @@
+:macro m2 { 
+    v0 := 5
+}
+:macro m1 { m2 m2 }
+:macro m0 { m1 m1 }
+: main
+    m0 m0
