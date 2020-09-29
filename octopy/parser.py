@@ -12,9 +12,9 @@ class Macro(NamedTuple):
         return "{}({}): <{}>".format(self.name, self.args, self.tokens)
 
 class Parser():
-    def __init__(self, tokenizer, emitter):
+    def __init__(self, tokenizer, emitter, macros = None):
         self.emitter = emitter
-        self.macros = {}
+        self.macros = macros or {}
         self.tokenizer = tokenizer
         self.tokenizer.advance()
         self.parse()
@@ -35,7 +35,7 @@ class Parser():
         macro = self.macros[self.tokenizer.current().text]
         macroargs = {k:self.tokenizer.next_ident() for k in macro.args}
         macro_tokenizer = self.tokenizer.maptokenizer(macro.tokens, macroargs)
-        macro_parser = Parser(macro_tokenizer, self.emitter)
+        macro_parser = Parser(macro_tokenizer, self.emitter, self.macros)
         macro_parser.parse()
 
     def __expect_statement(self):
