@@ -105,7 +105,7 @@ class Tokenizer():
         if num is None:
             return None
         if num < low or num > high:
-            self.error("number out of range")
+            self.error("number {} out of range [{}, {}]".format(num, low, high))
         return int(num) & high
 
     def accept_nybble(self):
