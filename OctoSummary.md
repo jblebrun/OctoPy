@@ -111,8 +111,12 @@ Before each comparison, `LD VF, Vy (8xy0)`
 * `end` -> Resolve `if` `JMP`
 
 ## Calc ops
+
+Right-to-left eval with () groupings
+No operator precedence.
+
 * unary:  - ~ ! sin cos tan exp log abs sqrt sign ceil floor @ strlen
 * binary: - + * / % & | ^ << >> pow min max < <= == != >= >
-
+* constants: E PI HERE
 
 
