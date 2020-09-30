@@ -13,7 +13,7 @@ class Macro(NamedTuple):
         return "{}({}): <{}>".format(self.name, self.args, self.tokens)
 
 class Parser():
-    def __init__(self, tokenizer, emitter, macros = None):
+    def __init__(self, tokenizer, emitter, macros=None):
         self.emitter = emitter
         self.macros = macros or {}
         self.tokenizer = tokenizer
@@ -53,6 +53,8 @@ class Parser():
                 self.__handle_label()
             elif cur == ";":
                 self.__handle_return()
+            elif cur in self.emitter.labels:
+                self.emitter.CALL(self.tokenizer.expect_ident())
             else:
                 num = self.tokenizer.accept_byte()
                 if num is not None:
@@ -73,6 +75,7 @@ class Parser():
     def __handle_label(self):
         name = self.tokenizer.next_ident()
         self.emitter.track_label(name)
+        self.tokenizer.add_const(name, 0x200+self.emitter.pc())
 
     def __handle_alias(self):
         dst = self.tokenizer.next_ident()
