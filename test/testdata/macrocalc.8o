@@ -1,0 +1,17 @@
+:macro m1 v n {
+    :calc v { n * 2 + 4 }
+    :macro m2 q m {
+        :calc q { n * m * 6 }
+        :byte q
+        :byte { 2 * 3 }
+    }
+}
+: main
+    m1 foo 2
+    m1 bar 3
+    m2 baz 4
+    v0 := foo
+    v1 := bar
+    v2 := baz
+: data
+  :byte { 6 * 7 }
