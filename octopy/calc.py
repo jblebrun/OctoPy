@@ -16,7 +16,7 @@ def calc(tokenizer, group_open=None):
         if pending_op is not None:
             num = calc(tokenizer, token) if token.text == ")" else tokenizer.parse_number()
             if num is None:
-                if pending_op not in unary_ops:
+                if pending_op not in unary_ops or token.text not in binary_ops:
                     raise ParseError("expected number", token)
                 result = unary_ops[pending_op](result)
                 pending_op = token.text

@@ -84,9 +84,7 @@ class Parser():
 
     def __handle_byte(self):
         if self.tokenizer.advance().text == "{":
-            tokens = self.__token_cluster()
-            calc_tokenizer = self.tokenizer.maptokenizer(reversed(tokens), {})
-            value = calc(calc_tokenizer)
+            value = self.__calc_expr()
         else:
             value = self.tokenizer.expect_byte()
         self.emitter.emit_byte(value)
@@ -95,10 +93,15 @@ class Parser():
         name = self.tokenizer.next_ident()
         if self.tokenizer.advance().text != "{":
             self.error("expected { to start calc expression")
+        value = self.__calc_expr()
+        self.tokenizer.add_const(name, value)
+
+    def __calc_expr(self):
         tokens = self.__token_cluster()
         calc_tokenizer = self.tokenizer.maptokenizer(reversed(tokens), {})
-        value = calc(calc_tokenizer)
-        self.tokenizer.add_const(name, value)
+        calc_tokenizer.add_const("HERE", self.emitter.pc() + 0x200)
+        return calc(calc_tokenizer)
+
 
     def __handle_const(self):
         name = self.tokenizer.next_ident()

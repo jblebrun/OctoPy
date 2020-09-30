@@ -13,9 +13,11 @@
     v0 := foo
     v1 := bar
     v2 := baz
+    m2 whee 5
+    i := whee
 : data
   :byte { 6 * 7 }
 
 : morecode
-    :calc something { data / 4 }
+    :calc something { HERE - data }
     v5 := something
