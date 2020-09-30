@@ -10,7 +10,7 @@ class Program():
         self.loops = []
         self.endjumps = []
 
-    def __pc(self):
+    def pc(self):
         return len(self.program)
 
     def __emit(self, op):
@@ -26,7 +26,7 @@ class Program():
         if isinstance(n, int):
             self.__emit((op << 4 | n >> 8, n & 0xFF))
         elif isinstance(n, Token):
-            self.unresolved.append((n, self.__pc()))
+            self.unresolved.append((n, self.pc()))
             self.__emit((op << 4 | 5, 0x55))
         else:
             raise Exception("Only number or token for n_op")
@@ -40,7 +40,7 @@ class Program():
             return False
 
         endjump = self.endjumps.pop()
-        target = self.__pc()+0x200 + offset
+        target = self.pc()+0x200 + offset
         self.program[endjump] = (1 << 4) + (target >> 8)
         self.program[endjump+1] = target & 0xFF
         return True
@@ -126,26 +126,26 @@ class Program():
         self.FX(x, 0x85)
 
     def track_label(self, name):
-        if self.__pc() == 0 and name != "main":
+        if self.pc() == 0 and name != "main":
             self.__add_main_jump()
-        self.labels[name] = self.__pc()
+        self.labels[name] = self.pc()
 
     def emit_else(self):
         if not self.__pop_end_jump(2):
             return False
-        self.endjumps.append(self.__pc())
+        self.endjumps.append(self.pc())
         self.JMP(0x333)
         return True
 
     def emit_begin(self):
-        self.endjumps.append(self.__pc())
+        self.endjumps.append(self.pc())
         self.JMP(0x333)
 
     def emit_end(self):
         return self.__pop_end_jump()
 
     def start_loop(self):
-        self.loops.append(self.__pc())
+        self.loops.append(self.pc())
 
     def end_loop(self):
         ret = self.loops.pop()

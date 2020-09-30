@@ -15,3 +15,7 @@
     v2 := baz
 : data
   :byte { 6 * 7 }
+
+: morecode
+    :calc something { data / 4 }
+    v5 := something
