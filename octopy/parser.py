@@ -85,9 +85,11 @@ class Parser():
     def __handle_byte(self):
         if self.tokenizer.advance().text == "{":
             value = self.__calc_expr()
+            if value < -127 or value > 255:
+                self.error("byte expression result {} out of range".format(value))
         else:
             value = self.tokenizer.expect_byte()
-        self.emitter.emit_byte(value)
+        self.emitter.emit_byte(int(value))
 
     def __handle_calc(self):
         name = self.tokenizer.next_ident()
