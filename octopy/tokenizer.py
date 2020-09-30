@@ -60,7 +60,7 @@ class Tokenizer():
         """
         def convert_token(token):
             if token.text in mapping:
-                return Token(mapping[token.text], token.line, token.field)
+                return Token(mapping[token.text].text, token.line, token.field)
             return token
 
         mapped = copy.copy(self)

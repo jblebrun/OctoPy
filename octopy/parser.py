@@ -34,7 +34,7 @@ class Parser():
         Swap out the program tokens for this macro, and then parse normally.
         """
         macro = self.macros[self.tokenizer.current().text]
-        macroargs = {k:self.tokenizer.next_ident() for k in macro.args}
+        macroargs = {k:self.tokenizer.advance() for k in macro.args}
         macro_tokenizer = self.tokenizer.maptokenizer(macro.tokens, macroargs)
         macro_parser = Parser(macro_tokenizer, self.emitter, self.macros)
         macro_parser.parse()
@@ -79,6 +79,15 @@ class Parser():
         src = self.tokenizer.next_register()
         self.tokenizer.add_register(dst, src)
 
+    def __handle_byte(self):
+        if self.tokenizer.advance().text == "{":
+            tokens = self.__token_cluster()
+            calc_tokenizer = self.tokenizer.maptokenizer(reversed(tokens), {})
+            value = calc(calc_tokenizer)
+        else:
+            value = self.tokenizer.expect_byte()
+        self.emitter.emit_byte(value)
+
     def __handle_calc(self):
         name = self.tokenizer.next_ident()
         if self.tokenizer.advance().text != "{":
@@ -106,9 +115,15 @@ class Parser():
     def __token_cluster(self):
         tokens = []
         token = self.tokenizer.advance()
-        while token.text != "}":
-            tokens.append(token)
-            token = self.tokenizer.advance()
+        depth = 1
+        while depth > 0:
+            if token.text == "{":
+                depth += 1
+            if token.text == "}":
+                depth -= 1
+            if depth > 0:
+                tokens.append(token)
+                token = self.tokenizer.advance()
         return tokens
 
 
