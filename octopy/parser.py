@@ -18,8 +18,6 @@ class Parser():
         self.macros = macros or {}
         self.tokenizer = tokenizer
         self.tokenizer.advance()
-        self.parse()
-        self.emitter.resolve()
 
     def parse(self):
         while self.tokenizer.current() is not None:
