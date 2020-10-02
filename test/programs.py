@@ -2,9 +2,7 @@ import unittest
 import os
 import sys
 
-from octopy.parser import Parser
-from octopy.tokenizer import Tokenizer 
-from octopy.program import Program
+from octopy.assemble import assemble 
 
 curdir = os.path.dirname(__file__) 
 def filehere(name): return os.path.join(curdir, name)
@@ -50,8 +48,7 @@ class TestPrograms(unittest.TestCase, metaclass=MetaTest):
         # Compile the program
         srcfile = filehere("{}.8o".format(name))
         with open(srcfile) as src:
-            p = Program()
-            Parser(Tokenizer(src), p)
+            program = assemble(src)
 
         # Generate the comparisons for each 16 byte group
         pc = 0
@@ -59,10 +56,10 @@ class TestPrograms(unittest.TestCase, metaclass=MetaTest):
         expectfile = os.path.join(curdir, "{}.expect.ch8".format(name))
         expectsize = os.path.getsize(expectfile)
         with open(expectfile) as expect:
-            upto = max(expectsize, len(p.program))
+            upto = max(expectsize, len(program))
             while pc < upto:
                 nextexpect = expect.buffer.read(16)
-                diffs += self.compareProgramLines(pc, p.program[pc:], nextexpect)
+                diffs += self.compareProgramLines(pc, program[pc:], nextexpect)
                 pc += 16
         
         ## Emit results if needed
