@@ -1,0 +1,86 @@
+:alias px v1
+:alias py v2
+
+: main
+    px := random 0b0011111
+    py := random 0b0001111
+    i  := crosshair
+    sprite px py 3
+
+    loop
+        # erase the player, update its position and then redraw:
+        sprite px py 3
+        v0 := OCTO_KEY_W if v0 key then py += -1
+        v0 := OCTO_KEY_S if v0 key then py +=  1
+        v0 := OCTO_KEY_A if v0 key then px += -1
+        v0 := OCTO_KEY_D if v0 key then px +=  1
+        v0 := OCTO_KEY_Q if v0 key then vertical
+        v0 := OCTO_KEY_E if v0 key then horizontal
+        sprite px py 3
+
+        # lock the framerate of this program via the delay timer:
+        loop
+            vf := delay
+            if vf != 0 then
+        again
+        vf := 1
+        delay := vf
+    again
+
+:alias uy v3
+:alias dy v4
+:alias lx v3
+:alias rx v4
+: horizontal
+    # undraw the crosshair
+    sprite px py 3
+    lx := px
+    rx := px
+    i := dot
+    sprite px py 1
+    loop
+        if lx != 0 begin lx -= 1 sprite lx py 1 end
+        if rx != 64 begin  rx += 1 sprite rx py 1 end
+        rx += lx
+        while rx != 64
+        rx -= lx
+    again
+    i := crosshair
+    sprite px py 3
+    loop
+        v0 := OCTO_KEY_E if v0 key then again
+
+    ;
+
+: vertical
+        # undraw the crosshair
+        sprite px py 3
+        uy := py
+        dy := py
+        i := dot
+        sprite px py 1
+        loop
+            if uy != 0 begin uy -= 1 sprite px uy 1 end
+            if dy != 32 begin  dy += 1 sprite px dy 1 end
+            uy += dy
+            while uy != 32
+            uy -= dy
+        again
+        i := crosshair
+        sprite px py 3
+        loop
+            v0 := OCTO_KEY_Q if v0 key then again
+
+        ;
+
+
+: dot
+            0x80
+            0x00
+: crosshair
+            0x40
+            0xA0
+            0x40
+            0x00
+
+

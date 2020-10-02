@@ -9,6 +9,7 @@ class Program():
         self.unresolved = []
         self.loops = []
         self.endjumps = []
+        self.whilejumps = []
 
     def pc(self):
         return len(self.program)
@@ -31,6 +32,12 @@ class Program():
         else:
             raise Exception("Only number or token for n_op")
 
+    def __resolve_addrop(self, jumpspot, pc):
+        target = pc + 0x200
+        self.program[jumpspot] &= 0xF0
+        self.program[jumpspot] |= (target >> 8) & 0x0F
+        self.program[jumpspot+1] = target & 0xFF
+
     def __add_main_jump(self):
         self.unresolved.append((Token("main", 0, 0), 0))
         self.JMP(0x555)
@@ -40,9 +47,7 @@ class Program():
             return False
 
         endjump = self.endjumps.pop()
-        target = self.pc()+0x200 + offset
-        self.program[endjump] = (1 << 4) + (target >> 8)
-        self.program[endjump+1] = target & 0xFF
+        self.__resolve_addrop(endjump, self.pc() + offset)
         return True
 
 
@@ -141,13 +146,22 @@ class Program():
         self.endjumps.append(self.pc())
         self.JMP(0x333)
 
+    def emit_while(self):
+        self.whilejumps[-1].append(self.pc())
+        self.JMP(0x444)
+
     def emit_end(self):
         return self.__pop_end_jump()
 
     def start_loop(self):
+        self.whilejumps.append([])
         self.loops.append(self.pc())
 
     def end_loop(self):
+        whiles = self.whilejumps.pop()
+        for whilespot in whiles:
+            self.__resolve_addrop(whilespot, self.pc()+2)
+
         ret = self.loops.pop()
         self.JMP(ret+0x200)
 
@@ -156,6 +170,5 @@ class Program():
             if token.text not in self.labels:
                 raise ParseError("Unresolved name", token)
             op = self.program[location] >> 4
-            target = 0x200 + (op << 12 | self.labels[token.text])
-            self.program[location] = target >> 8
-            self.program[location+1] = target & 0xFF
+            target = (op << 12 | self.labels[token.text])
+            self.__resolve_addrop(location, target)

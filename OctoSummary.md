@@ -66,6 +66,11 @@ Corresponding Chip8 pneumonics and opcodes are included, when relevant.
 * `-= (SUB 5)` `>>= (SHR 6)` `=- (NSUB 7)`  ` <<= (SHL E)`
 
 
+# Loops
+loop `save PC`
+ again `JP(lastloopPC)`
+while `parse condition, JP(nextagainPC)`
+
 # Conditionals
 
 * `if <condtion> then <statement>`

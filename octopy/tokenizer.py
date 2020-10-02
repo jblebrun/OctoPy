@@ -16,9 +16,13 @@ validIdent = re.compile("[a-zA-Z_][0-9a-zA-Z-_]*")
 
 class Tokenizer():
     def __init__(self, source):
-        self.consts = {"PI": math.pi, "E": math.e}
+        keys = ('X', '1', '2', '3', 'Q', 'W', 'E', 'A', 'S', 'D', 'Z', 'C', '4', 'R', 'F', 'V')
+        self.consts = {"OCTO_KEY_{}".format(k):i for i, k in enumerate(keys)}
+        self.consts["PI"] = math.pi
+        self.consts["E"] = math.e
         self.registers = self.registers = {"v"+hex(i)[2:]: i for i in range(0, 16)}
         self.current_token = None
+
         # Strip out whitespace and comments while tokenizing
         def tokenize(source):
             for line_num, line in enumerate(source):

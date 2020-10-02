@@ -278,7 +278,13 @@ class Parser():
         "key": "-key", "-key": "key",
     }
 
+    def __handle_while(self):
+        self.__parse_conditional("while")
+
     def __handle_if(self):
+        self.__parse_conditional()
+
+    def __parse_conditional(self, body=None):
         a = self.tokenizer.next_register()
         op = self.tokenizer.advance().text
         b_num = None
@@ -289,12 +295,12 @@ class Parser():
             if b_num is None:
                 b_reg = self.tokenizer.expect_register()
 
-        body = self.tokenizer.advance().text
+        body = body or self.tokenizer.advance().text
 
-        if body not in ("begin", "then"):
+        if body not in ("begin", "then", "while"):
             self.error("Expected begin or then")
 
-        if body == "begin":
+        if body in ("begin", "while"):
             op = self.dualOp[op]
 
         self.__if_handle_comparison(op, a, b_num, b_reg)
@@ -303,6 +309,8 @@ class Parser():
 
         if body == "begin":
             self.emitter.emit_begin()
+        elif body == "while":
+            self.emitter.emit_while()
 
     def __if_handle_comparison(self, op, a, b_num, b_reg):
         # Load the right side of the conditional into VF for comparison subtraction.
