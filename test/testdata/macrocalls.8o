@@ -1,0 +1,10 @@
+:macro cs r {
+    r := CALLS
+}
+
+: main
+    cs v0
+    cs v1
+    cs v3
+    cs v4
+
