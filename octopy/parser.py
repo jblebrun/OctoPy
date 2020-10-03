@@ -87,8 +87,13 @@ class Parser():
 
     def __handle_alias(self):
         dst = self.tokenizer.next_ident()
-        src = self.tokenizer.next_register()
-        self.tokenizer.add_register(dst, src)
+        if self.tokenizer.advance().text == "{":
+            src = self.__calc_expr()
+            if src < 0 or src > 15:
+                self.error("register expression result '{}' is out of range [0x0,0xF]".format(src))
+        else:
+            src = self.tokenizer.expect_register()
+        self.tokenizer.add_register(dst, int(src))
 
     def __handle_byte(self):
         if self.tokenizer.advance().text == "{":
