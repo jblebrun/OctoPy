@@ -1,6 +1,9 @@
+from dataclasses import dataclass
 from typing import NamedTuple
+
 from octopy.calc import calc
 from octopy.errors import ParseError
+
 
 class Macro(NamedTuple):
     """
@@ -11,6 +14,11 @@ class Macro(NamedTuple):
     tokens: list
     def __repr__(self):
         return "{}({}): <{}>".format(self.name, self.args, self.tokens)
+
+@dataclass
+class MacroEntry():
+    macro: Macro
+    calls: int
 
 class Parser():
     def __init__(self, tokenizer, emitter, macros=None):
@@ -32,8 +40,10 @@ class Parser():
         Swap out the program tokens for this macro, and then parse normally.
         """
         macro = self.macros[self.tokenizer.current().text]
-        macroargs = {k:self.tokenizer.advance() for k in macro.args}
-        macro_tokenizer = self.tokenizer.maptokenizer(macro.tokens, macroargs)
+        macroargs = {k:self.tokenizer.advance() for k in macro.macro.args}
+        macro_tokenizer = self.tokenizer.maptokenizer(macro.macro.tokens, macroargs)
+        macro_tokenizer.add_const("CALLS", macro.calls)
+        macro.calls += 1
         macro_parser = Parser(macro_tokenizer, self.emitter, self.macros)
         macro_parser.parse()
 
@@ -77,8 +87,13 @@ class Parser():
 
     def __handle_alias(self):
         dst = self.tokenizer.next_ident()
-        src = self.tokenizer.next_register()
-        self.tokenizer.add_register(dst, src)
+        if self.tokenizer.advance().text == "{":
+            src = self.__calc_expr()
+            if src < 0 or src > 15:
+                self.error("register expression result '{}' is out of range [0x0,0xF]".format(src))
+        else:
+            src = self.tokenizer.expect_register()
+        self.tokenizer.add_register(dst, int(src))
 
     def __handle_byte(self):
         if self.tokenizer.advance().text == "{":
@@ -116,7 +131,7 @@ class Parser():
             args.append(arg)
             arg = self.tokenizer.advance().text
         tokens = self.__token_cluster()
-        self.macros[name] = Macro(name, args, tokens)
+        self.macros[name] = MacroEntry(Macro(name, args, tokens), 0)
 
     def __token_cluster(self):
         tokens = []
