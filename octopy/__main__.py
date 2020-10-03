@@ -11,6 +11,9 @@ if __name__ == "__main__":
 
     program = assemble(f)
 
-    outname = sys.argv[1] + ".ch8"
+    if len(sys.argv) > 2:
+        outname = sys.argv[2]
+    else:
+        outname = sys.argv[1].split(".")[0] + ".ch8"
     fout = open(outname, 'w')
     fout.buffer.write(program)
