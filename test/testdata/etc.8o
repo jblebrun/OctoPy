@@ -2,6 +2,7 @@
 :alias score ve
 
 : main
+    clear
     hires
     lores
     bcd score

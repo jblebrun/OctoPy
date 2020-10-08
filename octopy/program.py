@@ -10,6 +10,7 @@ class Program():
         self.loops = []
         self.endjumps = []
         self.whilejumps = []
+        self.unpacks = {}
 
     def pc(self):
         return len(self.program)
@@ -56,6 +57,8 @@ class Program():
 
     def SYS(self, n):
         self.__n_op(0, n)
+    def CLS(self):
+        self.SYS(0xE0)
     def SCD(self, n):
         self.SYS(0xC << 4 | n)
     def RET(self):
@@ -165,7 +168,19 @@ class Program():
         ret = self.loops.pop()
         self.JMP(ret+0x200)
 
+    def emit_unpack(self, msn, name):
+        self.LDN(0, msn << 4)
+        self.LDN(1, 0)
+        self.unpacks[self.pc()] = name
+
     def resolve(self):
+        for pc, token in self.unpacks.items():
+            if token.text not in self.labels:
+                raise ParseError("Unresolved name", token)
+            target = self.labels[token.text] + 0x200
+            self.program[pc-1] = target & 0xFF
+            self.program[pc-3] |= (target >> 8) & 0xF
+
         for (token, location) in self.unresolved:
             if token.text not in self.labels:
                 raise ParseError("Unresolved name", token)

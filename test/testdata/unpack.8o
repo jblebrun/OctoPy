@@ -1,0 +1,17 @@
+: update-i
+    : op-location
+    0 0
+
+: main
+    i := op-location
+    :unpack 0xA location-1
+    save v1
+    update-i
+    :unpack 0xA location-2
+    save v1
+    update-i
+
+
+: location-1
+    1 2 3 4
+: location-2
