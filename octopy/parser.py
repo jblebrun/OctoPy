@@ -133,6 +133,12 @@ class Parser():
         tokens = self.__token_cluster()
         self.macros[name] = MacroEntry(Macro(name, args, tokens), 0)
 
+    def __handle_unpack(self):
+        msn = self.tokenizer.next_nybble()
+        name = self.tokenizer.advance()
+        self.tokenizer.expect_ident()
+        self.emitter.emit_unpack(msn, name)
+
     def __token_cluster(self):
         tokens = []
         token = self.tokenizer.advance()
@@ -217,6 +223,9 @@ class Parser():
     ### Statements
     def __handle_exit(self):
         self.emitter.EXIT()
+
+    def __handle_clear(self):
+        self.emitter.CLS()
 
     def __handle_scroll_down(self):
         n = self.tokenizer.next_nybble()
