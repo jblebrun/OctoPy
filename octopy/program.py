@@ -138,6 +138,9 @@ class Program():
             self.__add_main_jump()
         self.labels[name] = self.pc()
 
+    def track_next(self, name):
+        self.labels[name] = self.pc() + 1
+
     def emit_else(self):
         if not self.__pop_end_jump(2):
             return False

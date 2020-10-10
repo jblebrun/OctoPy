@@ -139,6 +139,11 @@ class Parser():
         self.tokenizer.expect_ident()
         self.emitter.emit_unpack(msn, name)
 
+    def __handle_next(self):
+        name = self.tokenizer.next_ident()
+        self.emitter.track_next(name)
+
+
     def __token_cluster(self):
         tokens = []
         token = self.tokenizer.advance()
