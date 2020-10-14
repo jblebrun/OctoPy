@@ -48,7 +48,9 @@ class TestPrograms(unittest.TestCase, metaclass=MetaTest):
         # Compile the program
         srcfile = filehere("{}.8o".format(name))
         with open(srcfile) as src:
-            program = assemble(src)
+            assembly = assemble(src)
+
+        program = assembly.program
 
         # Generate the comparisons for each 16 byte group
         pc = 0

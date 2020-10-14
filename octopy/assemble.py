@@ -19,12 +19,14 @@ def print_error(err):
 
 def assemble(f):
     program = Program()
+    tokenizer = Tokenizer(f)
     try:
-        parser = Parser(Tokenizer(f), program)
+        parser = Parser(tokenizer, program)
         parser.parse()
         program.resolve()
 
     except ParseError as error:
         print_error(error)
 
-    return program.program
+    program.consts = tokenizer.consts
+    return program
