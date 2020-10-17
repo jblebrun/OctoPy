@@ -8,7 +8,7 @@ class ParseError(Exception):
         cause = self
         while cause is not None:
             if cause.__class__ is not ParseError:
-                return "Parser Crash: {}".format(cause)
+                raise cause
             cause = cause.__cause__
 
         lines = []
