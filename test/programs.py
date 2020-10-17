@@ -3,6 +3,7 @@ import os
 import sys
 
 from octopy.assemble import assemble 
+from octopy.errors import ParseError
 
 curdir = os.path.dirname(__file__) 
 def filehere(name): return os.path.join(curdir, name)
@@ -47,8 +48,24 @@ class TestPrograms(unittest.TestCase, metaclass=MetaTest):
 
         # Compile the program
         srcfile = filehere("{}.8o".format(name))
+        
+        shouldfail = os.path.join(curdir, "{}.shouldfail".format(name))
+        
         with open(srcfile) as src:
             assembly = assemble(src)
+
+        if os.path.exists(shouldfail):
+            with open(shouldfail) as failure:
+                message = failure.read()
+
+            if assembly.error == None:
+                self.fail("Assembly succeeded, but error was expected: {}".format(message))
+
+            return
+
+        if assembly.error != None:
+            self.fail("Assembly failed:\n{}".format(assembly.error))
+            return
 
         program = assembly.program
 

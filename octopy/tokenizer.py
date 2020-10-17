@@ -84,7 +84,7 @@ class Tokenizer():
         return self.current_token
 
     def next_ident(self):
-        return self.advance(self.expect_ident).text
+        return self.advance(self.expect_ident)
 
     def next_register(self):
         return self.advance(self.expect_register)

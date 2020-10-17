@@ -80,13 +80,13 @@ class Parser():
     ###############
     #### Directives
 
-    def __handle_label(self):
+    def __handle_label(self, offset=0):
         name = self.tokenizer.next_ident()
-        self.emitter.track_label(name)
-        self.tokenizer.add_const(name, 0x200+self.emitter.pc())
+        self.emitter.track_label(name, offset)
+        self.tokenizer.add_const(name.text, 0x200+self.emitter.pc() + offset)
 
     def __handle_alias(self):
-        dst = self.tokenizer.next_ident()
+        dst = self.tokenizer.next_ident().text
         if self.tokenizer.advance().text == "{":
             src = self.__calc_expr()
             if src < 0 or src > 15:
@@ -105,7 +105,7 @@ class Parser():
         self.emitter.emit_byte(int(value))
 
     def __handle_calc(self):
-        name = self.tokenizer.next_ident()
+        name = self.tokenizer.next_ident().text
         if self.tokenizer.advance().text != "{":
             self.error("expected { to start calc expression")
         value = self.__calc_expr()
@@ -119,12 +119,12 @@ class Parser():
 
 
     def __handle_const(self):
-        name = self.tokenizer.next_ident()
+        name = self.tokenizer.next_ident().text
         value = self.tokenizer.advance(self.tokenizer.expect_number)
         self.tokenizer.add_const(name, value)
 
     def __handle_macro(self):
-        name = self.tokenizer.next_ident()
+        name = self.tokenizer.next_ident().text
         args = []
         arg = self.tokenizer.advance().text
         while arg != "{":
@@ -140,8 +140,7 @@ class Parser():
         self.emitter.emit_unpack(msn, name)
 
     def __handle_next(self):
-        name = self.tokenizer.next_ident()
-        self.emitter.track_next(name)
+        self.__handle_label(offset=1)
 
 
     def __token_cluster(self):
