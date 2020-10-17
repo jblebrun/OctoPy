@@ -100,6 +100,9 @@ class Tokenizer():
     def next_address(self):
         return self.advance(self.expect_address)
 
+    def next_long_address(self):
+        return self.advance(self.expect_long_address)
+
     def accept_register(self):
         return self.registers.get(self.current_token.text, None)
 
@@ -133,6 +136,9 @@ class Tokenizer():
     def accept_address(self):
         return self.accept_ranged_number(-0x7FF, 0xFFF)
 
+    def accept_long_address(self):
+        return self.accept_ranged_number(-0x7FFF, 0xFFFF)
+
     def expect_nybble(self):
         return self.expect(self.accept_nybble, "nybble")
 
@@ -141,6 +147,9 @@ class Tokenizer():
 
     def expect_address(self):
         return self.expect(self.accept_address, "address")
+
+    def expect_long_address(self):
+        return self.expect(self.accept_long_address, "long_address")
 
     def expect_number(self):
         return self.expect(self.parse_number, "number")
@@ -160,5 +169,14 @@ class Tokenizer():
             return num
         return self.expect_ident()
 
+    def expect_long_location(self):
+        num = self.accept_long_address()
+        if num is not None:
+            return num
+        return self.expect_ident()
+
     def next_location(self):
         return self.advance(self.expect_location)
+
+    def next_long_location(self):
+        return self.advance(self.expect_long_location)

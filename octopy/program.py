@@ -14,22 +14,20 @@ class Unresolved(NamedTuple):
 class Program():
     def __init__(self):
         self.program = bytearray()
-        self.__org = 0x200
         self.__offset = 0
         self.error = None
         self.labels = {}
         self.unresolved = Unresolved([], [], [], [], {})
 
     def pc(self):
-        return self.__offset + self.__org
+        return self.__offset + 0x200
 
     def org(self, org):
-        self.__org = org
         self.__offset = org - 0x200
 
     def __emit(self, op):
         if self.__offset < 0:
-            raise Exception("Can't emit data below 0x200. org: {:x}".format(self.__org))
+            raise Exception("Can't emit data below 0x200. org: {}".format(self.__offset))
         additional_size = self.__offset + len(op) - len(self.program)
         self.program.extend([0] * additional_size)
         self.program[self.__offset:self.__offset+len(op)] = op
@@ -50,10 +48,10 @@ class Program():
         else:
             raise Exception("Only number or token for n_op")
 
-    def __resolve_addrop(self, jumpspot, pc):
+    def __resolve_addrop(self, jumpspot, value):
         self.program[jumpspot] &= 0xF0
-        self.program[jumpspot] |= (pc >> 8) & 0x0F
-        self.program[jumpspot+1] = pc & 0xFF
+        self.program[jumpspot] |= (value >> 8)
+        self.program[jumpspot+1] = value & 0xFF
 
     def __add_main_jump(self):
         self.unresolved.jumpsandcalls.append((Token("main", 0, 0), 0))
@@ -64,7 +62,7 @@ class Program():
             return False
 
         endjump = self.unresolved.begins.pop()
-        self.__resolve_addrop(endjump, self.__offset + self.__org + offset)
+        self.__resolve_addrop(endjump, self.pc() + offset)
         return True
 
 
@@ -110,6 +108,9 @@ class Program():
         self.__xyn_op(0x9, x, y, 0)
     def LDI(self, n):
         self.__n_op(0xA, n)
+    def LDIL(self, addr):
+        self.__emit((0xF0, 0x00))
+        self.__n_op(0, addr)
     def JMP0(self, n):
         self.__n_op(0xB, n)
     def RAND(self, x, n):
@@ -206,6 +207,5 @@ class Program():
         for (token, location) in self.unresolved.jumpsandcalls:
             if token.text not in self.labels:
                 raise ParseError("Unresolved name", token)
-            op = self.program[location] >> 4
-            target = (op << 12 | self.labels[token.text])
+            target = self.labels[token.text]
             self.__resolve_addrop(location, target)
