@@ -97,6 +97,9 @@ class Tokenizer():
     def next_register(self):
         return self.advance(self.expect_register)
 
+    def next_address(self):
+        return self.advance(self.expect_address)
+
     def accept_register(self):
         return self.registers.get(self.current_token.text, None)
 

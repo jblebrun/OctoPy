@@ -14,15 +14,26 @@ class Unresolved(NamedTuple):
 class Program():
     def __init__(self):
         self.program = bytearray()
+        self.__org = 0x200
+        self.__offset = 0
         self.error = None
         self.labels = {}
         self.unresolved = Unresolved([], [], [], [], {})
 
     def pc(self):
-        return len(self.program)
+        return self.__offset + self.__org
+
+    def org(self, org):
+        self.__org = org
+        self.__offset = org - 0x200
 
     def __emit(self, op):
-        self.program.extend(op)
+        if self.__offset < 0:
+            raise Exception("Can't emit data below 0x200. org: {:x}".format(self.__org))
+        additional_size = self.__offset + len(op) - len(self.program)
+        self.program.extend([0] * additional_size)
+        self.program[self.__offset:self.__offset+len(op)] = op
+        self.__offset += len(op)
 
     def __xyn_op(self, op, x, y, n):
         self.__emit((op << 4 | x, y << 4 | n))
@@ -34,16 +45,15 @@ class Program():
         if isinstance(n, int):
             self.__emit((op << 4 | n >> 8, n & 0xFF))
         elif isinstance(n, Token):
-            self.unresolved.jumpsandcalls.append((n, self.pc()))
+            self.unresolved.jumpsandcalls.append((n, self.__offset))
             self.__emit((op << 4 | 5, 0x55))
         else:
             raise Exception("Only number or token for n_op")
 
     def __resolve_addrop(self, jumpspot, pc):
-        target = pc + 0x200
         self.program[jumpspot] &= 0xF0
-        self.program[jumpspot] |= (target >> 8) & 0x0F
-        self.program[jumpspot+1] = target & 0xFF
+        self.program[jumpspot] |= (pc >> 8) & 0x0F
+        self.program[jumpspot+1] = pc & 0xFF
 
     def __add_main_jump(self):
         self.unresolved.jumpsandcalls.append((Token("main", 0, 0), 0))
@@ -54,12 +64,12 @@ class Program():
             return False
 
         endjump = self.unresolved.begins.pop()
-        self.__resolve_addrop(endjump, self.pc() + offset)
+        self.__resolve_addrop(endjump, self.__offset + self.__org + offset)
         return True
 
 
     def emit_byte(self, byte):
-        self.program.append(byte)
+        self.__emit((byte,))
 
     def SYS(self, n):
         self.__n_op(0, n)
@@ -144,7 +154,7 @@ class Program():
     def LOADXY(self, x, y):
         self.__xyn_op(5, x, y, 3)
     def track_label(self, name, offset):
-        if self.pc() + offset == 0 and name.text != "main":
+        if self.pc() + offset == 0x200 and name.text != "main":
             self.__add_main_jump()
         if name.text in self.labels:
             raise ParseError("duplicate label defined", name)
@@ -153,16 +163,16 @@ class Program():
     def emit_else(self):
         if not self.__pop_end_jump(2):
             return False
-        self.unresolved.begins.append(self.pc())
+        self.unresolved.begins.append(self.__offset)
         self.JMP(0x333)
         return True
 
     def emit_begin(self):
-        self.unresolved.begins.append(self.pc())
+        self.unresolved.begins.append(self.__offset)
         self.JMP(0x333)
 
     def emit_while(self):
-        self.unresolved.whiles[-1].append(self.pc())
+        self.unresolved.whiles[-1].append(self.__offset)
         self.JMP(0x444)
 
     def emit_end(self):
@@ -178,18 +188,18 @@ class Program():
             self.__resolve_addrop(whilespot, self.pc()+2)
 
         ret = self.unresolved.loops.pop()
-        self.JMP(ret+0x200)
+        self.JMP(ret)
 
     def emit_unpack(self, msn, name):
         self.LDN(0, msn << 4)
         self.LDN(1, 0)
-        self.unresolved.unpacks[self.pc()] = name
+        self.unresolved.unpacks[self.__offset] = name
 
     def resolve(self):
         for pc, token in self.unresolved.unpacks.items():
             if token.text not in self.labels:
                 raise ParseError("Unresolved name", token)
-            target = self.labels[token.text] + 0x200
+            target = self.labels[token.text]
             self.program[pc-1] = target & 0xFF
             self.program[pc-3] |= (target >> 8) & 0xF
 

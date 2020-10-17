@@ -83,7 +83,7 @@ class Parser():
     def __handle_label(self, offset=0):
         name = self.tokenizer.next_ident()
         self.emitter.track_label(name, offset)
-        self.tokenizer.add_const(name.text, 0x200+self.emitter.pc() + offset)
+        self.tokenizer.add_const(name.text, self.emitter.pc() + offset)
 
     def __handle_alias(self):
         dst = self.tokenizer.next_ident().text
@@ -114,7 +114,7 @@ class Parser():
     def __calc_expr(self):
         tokens = self.__token_cluster()
         calc_tokenizer = self.tokenizer.maptokenizer(reversed(tokens), {})
-        calc_tokenizer.add_const("HERE", self.emitter.pc() + 0x200)
+        calc_tokenizer.add_const("HERE", self.emitter.pc())
         return calc(calc_tokenizer)
 
 
@@ -132,6 +132,10 @@ class Parser():
             arg = self.tokenizer.advance().text
         tokens = self.__token_cluster()
         self.macros[name] = MacroEntry(Macro(name, args, tokens), 0)
+
+    def __handle_org(self):
+        addr = self.tokenizer.next_address()
+        self.emitter.org(addr)
 
     def __handle_unpack(self):
         msn = self.tokenizer.next_nybble()
