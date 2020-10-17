@@ -1,4 +1,5 @@
 from typing import NamedTuple
+
 import math
 import re
 import copy

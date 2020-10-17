@@ -1,0 +1,11 @@
+:macro foo abuse {
+    :next abuse i := 0xAAA
+}
+
+: main 
+    foo thing
+    :unpack 0xA thing
+    foo thing2
+    :unpack 0xB thing2
+    
+

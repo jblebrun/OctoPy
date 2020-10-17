@@ -1,0 +1,1486 @@
+:const BALLDATA_SIZE 8
+:const BALLDATA_END 64
+:const SHOULD_FILL_MASK_START 1
+:const SHOULD_FILL_MASK_FINISH 2
+
+:const DRAW_HORIZONTAL 1
+:const DRAW_VERTICAL 2
+# FLAG_FINISHED indicates that an action finished.
+# We won't handle an action press again until 
+# the key is released after a line finishes.
+:const FLAG_FINISHED 4
+:const FINISHED_HORIZONTAL 5
+:const FINISHED_VERTICAL 6
+
+:const WIDTH 0x40
+:calc XMAX { WIDTH - 1 }
+:const HEIGHT 0x20
+:calc YMAX { HEIGHT - 1 }
+:const SPEED 1 
+:const WINSCORE 7
+
+:calc WIDTH_HI { WIDTH * 2 }
+:calc XMAX_HI { WIDTH_HI - 1 }
+:calc HEIGHT_HI { HEIGHT * 2 }
+:calc YMAX_HI { HEIGHT_HI - 1 }
+:calc SPEED_HI { SPEED * 2 }
+:calc WINSCORE_HI { WINSCORE * 4 }
+
+
+# General register strategy
+# v0 - v7 often contain sets loaded from memory
+# vf is vf
+# ve is usually a loop offset, or some other extremely temporary thing.
+# v8-vd are medium temporary, they might live between calls, holding some
+#       bits of data from a different v0-v7 set, for example.
+
+
+### Common register sets ###
+# A set of data about one of the balls.
+# Swapped in during the move calculations.
+:alias bx v0
+:alias by v1
+:alias dx v2
+:alias dy v3
+:alias top v4
+:alias left v5
+:alias right v6
+:alias bottom v7
+:alias balldata v7
+    
+
+# Player data set
+# Swapped in during movement key handling and line drawing.
+:alias px v0
+:alias py v1
+:alias start v2
+:alias finish v3
+:alias direction v4
+:alias start-target v5
+:alias finish-target v6
+:alias mark v7
+:alias movedata v7
+
+# Fill data
+:alias fillstartx v0
+:alias fillendx v1
+:alias fillstarty v2
+:alias fillendy v3
+:alias fillshouldfill v4
+:alias filldata v4
+
+# Permanent
+:alias offset ve # for looping over ballset
+:alias sign vf
+
+# moveset should be loaded
+:macro draw-crosshair {
+    i := crosshair
+    sprite px py 2
+    px -= 1
+    py -= 1
+    sprite px py 2
+    px += 1
+    py += 1
+}
+
+# moveset should be loaded
+:macro move-crosshair coord amt bound loc {
+    draw-crosshair
+    coord += amt
+    :next loc if coord == bound then coord -= amt 
+    draw-crosshair
+}
+
+####################
+### LINE DRAWING ###
+####################
+
+# Run on each loop to draw part of a player line
+:macro check-lines {
+    i := moveset
+    load movedata
+    if direction == DRAW_HORIZONTAL begin horizontal-step end
+    if direction == DRAW_VERTICAL begin vertical-step end
+    i := moveset
+    save movedata
+}
+
+
+########################
+### LINE ACTION INIT ###
+########################
+
+# Used by maybe-start-line-drawing to decide if the player is 
+# In an unfilled region, and so could draw a line.
+# For each active region, we check that px, py are full 
+# in the bounds of that region.
+# If they are, we save the line-drawing bounds, and the drawing
+# direction into the line-data.
+# This includes setting the direction of moveset to check-direction,
+# which will signal for the move to proceed.
+:alias check-player-x vd
+:alias check-player-y vc
+:alias check-direction vb
+: check-in-region
+    offset := 0
+    check-player-x := px
+    check-player-y := py
+    v0 := v0
+    loop
+        i := b1
+        i += offset 
+        load balldata
+
+        if dx == 0 then return
+
+        if check-player-x >= right then jump next-check
+        if check-player-x <= left then jump next-check
+        if check-player-y >= bottom then jump next-check
+        if check-player-y <= top then jump next-check
+
+        if check-direction == DRAW_HORIZONTAL begin
+            v3 := left # left is v5, set before overwriting
+            v0 := check-player-x 
+            v1 := check-player-x
+            v2 := check-direction
+            v4 := right
+            v5 := check-player-y
+        else
+            v3 := top # top is v4, set before overwriting
+            v0 := check-player-y
+            v1 := check-player-y 
+            v2 := check-direction 
+            v4 := bottom
+            v5 := check-player-x
+        end
+        i := line-data 
+        save v5
+        return
+
+        : next-check
+        offset += BALLDATA_SIZE
+        while offset != BALLDATA_END
+    again
+;
+
+# in check-direction = 1 - horizontal
+#           2 - vertical
+: maybe-start-line-drawing
+    check-in-region
+    i := moveset
+    load movedata
+    if direction == check-direction begin
+        # undraw crosshair
+        draw-crosshair
+
+        # first dot for the player line
+        i := dot
+        sprite px py 1
+    end
+;
+
+
+# Called from split-regions, assumes that the ball data
+# set at b1 + offset was previously loaded, and will restore it.
+:macro handle-region-split bound coord fillloc fillloc2 mask diff {
+    # Save the provided bound to the provided location.
+    # This is going to be one of the fill boundaries.
+    v0 := bound
+    i := fillloc
+    save v0
+
+    # Since we're drawing a line already, we don't need to account for it while
+    # filling later.
+    v0 := coord
+    v0 -= diff
+    i := fillloc2
+    save v0
+
+    # Save a mask that indicates the direction that we shrunk.
+    i := filldatashouldfill
+    load v0
+    v1 := mask
+    v0 |= v1
+    i := filldatashouldfill
+    save v0
+
+    # Restore ball data.
+    i := b1
+    i += offset
+    load v1
+    bound := coord
+    bound += diff
+}
+
+
+# Checks to see if we should actually split the region in the given direction.
+:macro maybe-check-region-split 
+    DIRECTION 
+    splitting-coord 
+    ball-coord 
+    start-bound finish-bound
+    filldata-start filldata-end
+{
+    if splitting-direction == DIRECTION begin
+        if ball-coord <= splitting-coord begin
+            if splitting-coord < finish-bound begin
+                handle-region-split finish-bound splitting-coord filldata-end filldata-start SHOULD_FILL_MASK_FINISH -1
+            end
+        end
+        if ball-coord >= splitting-coord begin
+            if splitting-coord > start-bound begin
+                handle-region-split start-bound splitting-coord filldata-start filldata-end SHOULD_FILL_MASK_START 1
+            end
+        end
+    end
+}
+
+:alias splitting-x va
+:alias splitting-y vd
+:alias splitting-direction vc
+
+# Called when a line-drawing sequence has finished (reached bounds on both sides
+# This goes through each active ball region and determines if we have reduced the 
+# size of this region. Resizes the region for each ball as appropriate. 
+
+# As it's going, it also tracks whether a region shrink leaves any area with no 
+# balls in it. This information is recorded in filldata.
+: split-regions
+    splitting-x := px
+    splitting-y := py
+    splitting-direction := direction
+    offset := 0
+    
+    i := moveset
+    save movedata
+
+    # Account for the line in the score
+    i := score
+    load v1
+    v2 := finish-target
+    v2 -= start-target
+    v0 += v2
+    v1 += vf
+    i := score
+    save v1
+    v0 := v0
+
+    # Set up the potential fill region 
+    # (if there's a ball on only one side of the split)
+    if direction == FINISHED_HORIZONTAL begin
+        v0 := start-target    # filldatastartx
+        v1 := finish-target   # filldataendx
+        v2 := splitting-y     # filldatastarty
+        v3 := splitting-y     # filldataendy
+    else 
+        v0 := splitting-x     # filldatastartx
+        v1 := splitting-x     # filldataendx
+        v2 := start-target    # filldatastarty
+        v3 := finish-target   # filldataendy
+    end
+    v4 := 0 # should fill
+    i := fillset
+    save filldata
+
+
+    loop
+        i := b1
+        i += offset
+        load balldata
+        
+        if dx == 0 then jump next-regions
+        if splitting-x <= left then jump next-regions
+        if splitting-x >= right then jump next-regions
+        if splitting-y <= top then jump next-regions
+        if splitting-y >= bottom then jump next-regions
+
+        maybe-check-region-split FINISHED_HORIZONTAL splitting-y by top bottom filldatastarty filldataendy
+        maybe-check-region-split FINISHED_VERTICAL splitting-x bx left right filldatastartx filldataendx
+
+        i := b1
+        i += offset
+        save balldata
+        : next-regions
+        offset += BALLDATA_SIZE
+        while offset != BALLDATA_END
+    again
+
+    runfill
+    
+    i := moveset
+    load movedata
+;
+
+
+:alias bounds-met ve
+:macro step coord target diff x y {
+    if coord != target begin coord += diff sprite x y 1 end
+}
+
+:macro steps x1 y1 x2 y2 steploc {
+    i := dot
+    bounds-met := 0
+    step start start-target -1 x1 y1 
+    step start start-target -1 x1 y1 
+    step finish finish-target 1 x2 y2
+    step finish finish-target 1 x2 y2
+    if start == start-target then bounds-met += 1
+    if finish == finish-target then bounds-met += 1
+    if bounds-met == 2 begin
+        draw-crosshair
+        vf := FLAG_FINISHED
+        direction |= vf
+        split-regions 
+    end
+}
+
+# Active set: moveset
+:macro horizontal-step {
+    steps start py finish py hsteploc
+}
+
+# Active set: moveset
+:macro vertical-step {
+    steps px start px finish vsteploc
+}
+
+# Go through the balls until one isn't one, turn it on
+:macro next-level {
+    i := level
+    load v0
+    vd := v0
+    v0 := 0
+    v1 := 0
+    i := score
+    save v1
+    offset := 0
+    loop
+        i := b1
+        i += offset
+        load balldata
+        :next startx-loc bx := random XMAX
+        :next starty-loc by := random YMAX 
+        :next speedx-loc dx := SPEED
+        :next speedy-loc dy := SPEED
+        vf := random 1
+        if vf == 1 begin
+            vf := random 1
+            if vf == 1 begin 
+                :next speedx-more-loc dx += 1 
+            else 
+                :next speedy-more-loc dy += 1 
+            end 
+        end
+        top := 0
+        left := 0
+        :next right-loc right := XMAX
+        :next bottom-loc bottom := YMAX 
+        i := b1
+        i += offset
+        save balldata
+        i := dot
+        sprite px py 1
+        offset += BALLDATA_SIZE
+        while offset != BALLDATA_END
+        while vd != 0
+        vd -= 1
+    again
+    i := moveset
+    load movedata
+}
+
+# Clobbers v0-v5
+:alias checking-key vd
+:macro check-keys {
+    i := moveset
+    load movedata
+    if direction == 0 begin
+        checking-key := OCTO_KEY_W if checking-key key begin move-crosshair py -1 -1 dummy end
+        checking-key := OCTO_KEY_S if checking-key key begin move-crosshair py 1 HEIGHT move-height-loc end
+        checking-key := OCTO_KEY_A if checking-key key begin move-crosshair px -1 -1 dummy2 end
+        checking-key := OCTO_KEY_D if checking-key key begin move-crosshair px 1 WIDTH move-width-loc end
+        checking-key := OCTO_KEY_Q if checking-key key begin check-direction := DRAW_VERTICAL maybe-start-line-drawing end
+        checking-key := OCTO_KEY_E if checking-key key begin check-direction := DRAW_HORIZONTAL maybe-start-line-drawing end
+        checking-key := OCTO_KEY_2 if checking-key key begin 
+            loop while checking-key key again
+            level-clear 
+        end
+    end
+    if direction == FINISHED_VERTICAL begin 
+        checking-key := OCTO_KEY_Q if checking-key -key then direction := 0
+    end
+    if direction == FINISHED_HORIZONTAL begin 
+        checking-key := OCTO_KEY_E if checking-key -key then direction := 0
+    end
+    i := moveset
+    save movedata
+}
+
+# Messes up:
+# Fill in an area of the screen.
+:alias fillx v4
+:alias filly v5
+:alias dotwidth v6
+:alias score-add-lo v7
+:alias score-add-hi v8
+: runfill
+
+    i := score
+    load v1
+    score-add-lo := v0
+    score-add-hi := v1
+    v0 := v0
+
+    i := fillset
+    load filldata
+
+    # Split with ball to left/top sets 1
+    # Split with ball to right/bottom sets 2
+    # If neither bit is set we don't fill - although probably something went wrong in this case.
+    # If both bits are set we don't fill - there's a ball on both sides still.
+    if fillshouldfill == 0 then return
+    if fillshouldfill == 3 then return
+
+    fillendx += 1
+    fillx := fillstartx
+    filly := fillstarty
+# Fill from left to right,
+# in Top-to-bottoms stripes
+    loop
+        # Calculate the stripewidth. If there's a lot left to fill, it's 8.
+        # Otherwise, it is the amount left to fill.
+        dotwidth := fillendx 
+        dotwidth -= fillx
+        if dotwidth > 8 then dotwidth := 8
+
+        # Get the graphic location corresponding to this vertical stripe.
+        i := beforedots 
+        i += dotwidth
+
+        loop
+            sprite fillx filly 1
+
+            score-add-lo += dotwidth
+            score-add-hi += vf
+
+            while filly != fillendy
+            filly += 1
+        again
+
+        # We hit the bottom, move over
+        fillx += dotwidth
+        filly := fillstarty
+
+        while fillx < fillendx
+    again
+
+    :next winscore-loc if score-add-hi >= WINSCORE begin
+        level-clear 
+    else 
+        v0 := score-add-lo
+        v1 := score-add-hi
+        i := score
+        save v1
+        v0 := v0
+    end
+;
+
+
+############################
+### BALL MOVING ROUTINES ###
+############################
+
+
+# v8-vb hold information needed to 
+# determine if a ball is crossing
+# a line that's being drawn.
+# The ball data set is v0-v7, so
+# we start at v8.
+:alias movecalc-start v8
+:alias movecalc-finish v9
+:alias movecalc-direction va
+:alias movecalc-mark vb
+# Set for-each-ball-action to a valid call
+# And then call this
+: move-all 
+    movecalc-start := start
+    movecalc-finish := finish
+    movecalc-direction := direction
+    if direction == DRAW_HORIZONTAL then movecalc-mark := py
+    if direction == DRAW_VERTICAL then movecalc-mark := px
+
+    offset := 0
+    loop
+        i := b1
+        i += offset
+        load balldata
+        if dx != 0 begin
+            moveball
+            if vf == 1 then return
+            i := b1
+            i += offset
+            save balldata
+            offset += BALLDATA_SIZE
+        else 
+            offset := BALLDATA_END
+        end
+        while offset != BALLDATA_END
+    again
+    vf := 0
+;
+
+### Boundary crossing notes:
+# The math is simple, and we can use the same pattern for both directions, 
+# but there's a lot to keep track of.
+# Consider the x dimension:
+# We are either moving left (decreasing) or moving right (increasing).
+#
+# First, we subtract the boundary from the coordinate, so that we're working
+# relative to a boundary of 0.
+#
+# Now, we add the speed to the coordinate.
+# 
+# The movement results in a crossing based on the value of the vf carry flag. BUT, 
+# the value expect depends on the direction of movement. If we were moving left,
+# Then when we cross, we expect to *not* get the carry flag.
+# For example:
+#   x = 5, dx = -2, left = 4. 
+#   We adjusted for the boundary, so x = 1.
+#   x + dx ->   
+#   1 + -2 -> 
+#   0x01 + 0xFE -> 0xFF. Note that there was no carry!
+#   In other words, adding -2 gives the same vf as subtracting 2. 
+#
+#   For a non cross:
+#   x = 5 dx = -1 left = 3
+#   x = 2 after bounds adjust.
+#   x + dx -> 2 + -2 -> 0x02 + 0xFE -> 0x00 -- a carry!
+#
+#   We only check left bound when moving left and right bound when moving right, so 
+#   there's no need for the math to work out on the opposite boundaries (and no need 
+#  do those pointless checks).
+
+### Single macro to handle bounds check.
+# coord: the current value of the coordinate checked
+# velo: the speed along the dimension
+# bound: the bound we are checking against
+# expect: the carry flag the indicates a hit (see notes above)
+:macro checkbound coord velo bound hitwhencarryis {
+    # do math to calculate a boundary crossing.
+    coord -= bound
+
+    # When we check right/down directions, hitwhencarryis == 1
+    # By adding this to coord, we make sure to handle the case where
+    # The ball is right on top of the boundary. If we didn't also subtract
+    # this 1, then the subsequent addition would not overflow. This was
+    # causing crazy-ball syndrome, where occasionally balls would fly all
+    # over seeming without any bounds.
+    coord -= hitwhencarryis
+
+    coord += velo
+    if vf == hitwhencarryis begin 
+        # clip to bound
+        coord := bound
+        # negate velocity
+        vf := 0
+        velo =- vf
+        vf := 2
+        buzzer := vf
+        # TODO - maybe random it up a little?
+    else
+        coord += bound
+        coord += hitwhencarryis
+    end	
+}
+
+### Call the appropriate checkbound for a coordinate
+:macro ud2 coordinate velocity boundStart boundEnd {
+    # Find sign of velocity
+    # Shifts left one, MSB goes into vF (sign)
+    # We're ready for both shift behaviors!
+    sign := velocity
+    sign <<= velocity
+
+    if sign == 1 begin
+        # We are moving to the left, or up (decreasing coord)
+        # So check for crossing the start/minimum boundary
+        checkbound coordinate velocity boundStart 0
+    else 
+        # We are moving to the right, or down (increasing coord)
+        # So check for crossing the end/maximum boundary
+        checkbound coordinate velocity boundEnd 1
+    end
+}
+
+# vf is 1 on return if collided with line
+: hmoveball
+    if movecalc-direction != DRAW_VERTICAL then jump hjustdraw
+
+    if by < movecalc-start then jump hjustdraw
+    if by > movecalc-finish then jump hjustdraw
+
+    if bx < movecalc-mark begin
+        ud2 bx dx left right
+        if bx >= movecalc-mark then vf := 1
+        return
+    end
+
+    if bx > movecalc-mark begin
+        ud2 bx dx left right
+        if bx <= movecalc-mark then vf := 1
+        return
+    end
+        
+    : hjustdraw 
+    ud2 bx dx left right
+    vf := 0
+;
+
+# vf is 1 on return if collided with line
+: vmoveball
+    if movecalc-direction != DRAW_HORIZONTAL then jump vjustdraw
+
+    if bx < movecalc-start then jump vjustdraw
+    if bx > movecalc-finish then jump vjustdraw
+
+    if by < movecalc-mark begin
+        ud2 by dy top bottom
+        if by >= movecalc-mark then vf := 1
+        return
+    end
+
+    if by > movecalc-mark begin
+        ud2 by dy top bottom
+        if by <= movecalc-mark then vf := 1
+        return
+    end
+        
+    : vjustdraw 
+    ud2 by dy top bottom
+    vf := 0
+;
+
+: moveball
+    i := dot
+    sprite bx by 1
+    hmoveball
+    if vf == 1 then return
+    vmoveball
+    if vf == 1 then return
+    i := dot
+    sprite bx by 1
+    vf := 0
+;
+
+: drawsplode
+    v0 := random 0x18
+    v1 := random 0x3c
+    v2 := random 0x7e
+    v3 := random 0xff
+    v4 := random 0xff
+    v5 := random 0x7e
+    v6 := random 0x3c
+    v7 := random 0x18
+    i := splosion
+    save v7
+    i := splosion
+    sprite va vb 8
+;
+
+
+: splode
+    loop
+        vf := delay
+        if vf == 0 begin
+            vf := 2
+            delay := vf
+            va -= v9
+            vb -= v9
+            drawsplode
+            va += v9
+            va += v9
+            drawsplode
+            vb += v9
+            vb += v9
+            drawsplode
+            va -= v9
+            va -= v9
+            drawsplode
+            va += v9
+            vb -= v9
+
+            vf := 1
+            buzzer := vf
+            v8 -= 1
+            while v8 != 0
+        end
+    again
+;
+
+
+:macro random-offset coord BOUND  {
+    ve := random 0x7
+    vf := random 0x1
+    if vf == 1 begin 
+        coord += ve
+        if coord > BOUND then coord := BOUND
+    else 
+        coord -= ve 
+        if coord > BOUND then coord := 0
+    end
+}
+
+: lose
+    va := bx
+    vb := by
+    va -= 3
+    vb -= 3
+
+    v8 := 15
+    v9 := 0
+    splode
+
+    v8 := 25
+    v9 := 2
+    splode
+
+    vc := 60
+    loop
+        random-offset va XMAX
+        random-offset vb YMAX
+        v8 := 1
+        v9 := 3
+        splode
+        vc -= 1
+        while vc != 0
+    again
+
+    vc := 120
+    loop
+        va := random XMAX 
+        vb := random YMAX 
+        v8 := 1
+        v9 := 3
+        splode
+        vc -= 1
+        while vc != 0
+    again
+    
+
+    v0 := key
+    loop 
+        while v0 key
+    again
+;
+
+: splosion
+    0 0 0 0 0 0 0 0 
+
+
+: draw-face
+    i := transition-face-tl
+    v2 := 8
+    v0 := 24 v1 := 8
+    sprite v0 v1 8
+    
+    v0 := 32 v1 := 8
+    i += v2
+    sprite v0 v1 8
+    
+    v0 := 24 v1 := 16
+    i += v2
+    sprite v0 v1 8
+    
+    v0 := 32 v1 := 16
+    i += v2
+    sprite v0 v1 8
+;
+
+: draw-mouth
+    v0 := 28
+    v1 := 19
+    sprite v0 v1 3
+;
+
+: draw-eyes
+    v0 := 28
+    v1 := 11
+    sprite v0 v1 3
+;
+
+: draw-grimace
+    i := grimace
+    draw-mouth
+    i := sideeye
+    draw-eyes
+;
+
+: draw-happy
+    i := smile 
+    draw-mouth
+    i := happyeye
+    draw-eyes
+;
+
+: draw-mad
+    i := madmouth
+    draw-mouth
+    i := evileye
+    draw-eyes
+;
+
+: draw-evil
+    i := evilmouth
+    draw-mouth
+    i := evileye
+    draw-eyes
+;
+
+:macro wait n {
+    v2 := n
+    delay := v2
+    loop
+        v2 := delay
+        while v2 != 0
+    again
+}
+ 
+:alias start-screen-level vc
+: draw-around
+    i := hex start-screen-level
+    v0 := 15
+    v1 := 1
+    loop
+        sprite v0 v1 5
+        v0 += 6
+        while v0 != 51
+        wait 5
+    again
+    v0 -= 6
+    v1 += 6
+    loop
+        sprite v0 v1 5
+        v1 += 6
+        while v1 != 31
+        wait 5
+    again
+    v1 -= 6
+    v0 -= 6
+    loop
+        sprite v0 v1 5
+        v0 -= 6
+        while v0 != 9
+        wait 5
+    again
+    v0 += 6
+    v1 -= 6
+    loop
+        sprite v0 v1 5
+        v1 -= 6
+        while v1 != 1
+        wait 5
+    again
+
+;
+
+: box
+  0xFF 0x81 0x81 0x81 0x81 0x81 0x81 0xFF
+
+
+:const TRAP_STARTX 3 
+:const TRAP_STARTY 6
+:const TRAP_DIFFX 10
+:const TRAP_DIFFY 10
+:calc TRAP_JUMPY { TRAP_STARTY + ( 2 * TRAP_DIFFY ) }
+:calc TRAP_JUMPX { TRAP_STARTX + ( 2 * TRAP_DIFFX ) }
+:calc TRAP_STARTX2 { TRAP_STARTX + ( TRAP_DIFFX * 4 ) }
+
+: draw-trapped
+  ve := v8
+  ve -= 1
+  v7 := v7
+  ve <<= ve
+  ve <<= ve
+  ve <<= ve
+  v7 := v7
+
+  va := TRAP_STARTX
+  vb := TRAP_STARTY
+  loop 
+      v7 := v7
+      i := box
+      sprite va vb 8
+      bx := random 0x5
+      bx += va
+      bx += 1
+      by := random 0x5
+      by += vb
+      by += 1
+      dx := 1
+      dy := 1
+      top := vb
+      top += 1
+      left := va
+      left += 1
+      right := va
+      bottom := vb
+      right += 6
+      bottom += 6
+      i := dot
+      sprite bx by 1
+      i := b1
+      i += ve
+      save v7
+
+      vb += TRAP_DIFFY
+      while ve != 0
+      ve -= 8
+      if vb == TRAP_JUMPY begin
+          vb := TRAP_STARTY
+          va += TRAP_DIFFX
+          if va == TRAP_JUMPX then va := TRAP_STARTX2
+        end
+  again
+;
+
+: level-start-screen-balls
+  offset := start-screen-level
+  offset -= 1
+  offset <<= offset
+  offset <<= offset
+  offset <<= offset
+  bx := 0
+  by := random 0x1f
+  dx := 1
+  dy := 1
+  top := 0
+  left := 0
+  right := 0xE
+  bottom := 0x1f
+  i := dot
+  sprite bx by 1
+  i := b1
+  i += offset
+  save v7
+  loop
+      while offset != 0
+      offset -= BALLDATA_SIZE
+      i := b1
+      i += offset
+      load v7
+      i := dot
+      sprite bx by 1
+      top := 0
+      left := 0
+      right := 0xE
+      bottom := 0x1f
+      i := b1
+      i += offset
+      save v7
+  again
+;
+
+: level-start-screen
+    clear
+    i := level
+    load v0
+
+    start-screen-level := v0
+    start-screen-level += 1
+
+    level-start-screen-balls
+ 
+    draw-face
+    draw-grimace
+ 
+    vd := 10
+    loop
+        move-all
+        while vd != 0
+        vd -= 1 
+        wait 2
+    again
+
+    draw-around
+    
+    loop
+        move-all
+        ve := OCTO_KEY_Q if ve key then jump level-start-screen-done
+        ve := OCTO_KEY_E if ve key then jump level-start-screen-done
+        wait 2
+    again
+    : level-start-screen-done
+    loop while ve key again
+    clear
+;
+
+: level-clear
+    clear
+    i := level
+    load v0
+    v0 += 1
+    i := level
+    save v0
+
+    v8 := v0
+
+    draw-face
+    draw-grimace
+
+    draw-trapped
+    
+    draw-grimace
+    draw-happy
+
+    loop
+        move-all
+        ve := OCTO_KEY_Q if ve key then jump level-clear-done
+        ve := OCTO_KEY_E if ve key then jump level-clear-done
+        wait 2
+    again
+    loop while ve key again
+    : level-clear-done
+
+    i := level
+    load v0
+    if v0 == 8 then win
+    clear
+    level-start-screen
+    playstart 
+;
+
+: winsplode
+    loop
+        va := random 0xF
+        vb := random 0x1F
+        drawsplode
+        va := random 0xF
+        va += 0x29
+        vb := random 0x1F
+        drawsplode
+        v8 -= 1
+        while v8 != 0
+        wait v9
+    again
+;
+
+: win
+    v8 := 4
+    v9 := 30
+    winsplode
+    
+    draw-happy
+    draw-mad
+    v8 := 24
+    v9 := 5
+    winsplode
+    
+    draw-mad
+    draw-evil
+    v8 := 240
+    v9 := 1
+    winsplode
+    
+    clear
+    draw-face
+    draw-happy
+    i := dot
+    va := 32
+    vb := 31
+    vc := 48
+    vd := 15
+    loop
+        v0 := 3
+        sprite va v0 1
+        sprite vb v0 1
+        v0 := 4
+        sprite vc v0 1
+        sprite vd v0 1
+        v0 := 2
+        sprite vc v0 1
+        sprite vd v0 1
+        v0 := 29
+        sprite va v0 1
+        sprite vb v0 1
+        v0 := 30
+        sprite vc v0 1
+        sprite vd v0 1
+        v0 := 28
+        sprite vc v0 1
+        sprite vd v0 1
+        va += 1
+        if va == 0x3f then va := 32
+        vb -= 1
+        if vb == 0 then vb := 31
+        vc += 1
+        if vc == 0x3f then vc := 32
+        vd -= 1
+        if vd == 0 then vd := 31
+        wait 1
+    again
+;
+    
+:macro letter x y name {
+    v0 := x v1 := y
+    i := name
+    sprite v0 v1 11
+}
+
+:macro init-balls src dst {
+    offset := 0
+    loop 
+        i := src
+        i += offset
+        load v7
+        i := dot
+        sprite bx by 1
+        i := dst
+        i += offset
+        save v7
+        offset += 8
+        while offset != 24
+    again
+}
+
+
+:macro set-loc loc value {
+    v0 := value
+    i := loc
+    save v0
+}
+
+: gohi
+    set-loc move-width-loc WIDTH_HI
+    set-loc move-height-loc  HEIGHT_HI
+    set-loc startx-loc XMAX_HI
+    set-loc right-loc XMAX_HI
+    set-loc starty-loc YMAX_HI
+    set-loc bottom-loc YMAX_HI
+    set-loc winscore-loc WINSCORE_HI
+    set-loc speedx-loc SPEED_HI
+    set-loc speedx-more-loc SPEED_HI
+    set-loc speedy-loc SPEED_HI
+    set-loc speedy-more-loc SPEED_HI
+    hires
+    clear
+;
+
+: golo
+    set-loc move-width-loc  WIDTH
+    set-loc move-height-loc  HEIGHT
+    set-loc startx-loc XMAX
+    set-loc right-loc XMAX
+    set-loc starty-loc YMAX
+    set-loc bottom-loc YMAX
+    set-loc winscore-loc WINSCORE
+    set-loc speedx-loc SPEED
+    set-loc speedx-more-loc SPEED
+    set-loc speedy-loc SPEED
+    set-loc speedy-more-loc SPEED
+    lores
+    clear
+;
+
+: uuddlrlrstate
+ 0 0 0
+
+: write-level 
+    va := 3
+    vb := 25
+    v0 += 1
+    i := hex v0
+    v0 -= 1
+    sprite va vb 5
+;
+
+: uuddlrlr
+    loop while ve key again
+    i := uuddlrlrstate
+    load v1
+    if v1 == 1 begin
+        change-level
+    else
+        v7 := v7
+        jump0 uuddlrlrtable
+    : uuddlrlr-finish
+        uuddlrlr-save-if-at-end
+    end
+;
+
+: change-level
+    i := level
+    load v0
+    write-level
+    if ve == OCTO_KEY_D then v0 += 1
+    if ve == OCTO_KEY_A then v0 -= 1
+    if v0 == 255 then v0 := 0
+    if v0 == 9 then v0 := 8
+    v8 := v8
+    i := level
+    save v0
+    write-level
+;
+
+: uuddlrlrtable
+:macro uuddlrlr-handler nextkey {
+    :calc target { 12 * CALLS + 1 } 
+    if ve == nextkey begin v0 := target else v0 := 0 end
+    jump uuddlrlr-finish
+}
+
+uuddlrlr-handler OCTO_KEY_W
+uuddlrlr-handler OCTO_KEY_W
+uuddlrlr-handler OCTO_KEY_S
+uuddlrlr-handler OCTO_KEY_S
+uuddlrlr-handler OCTO_KEY_A
+uuddlrlr-handler OCTO_KEY_D
+uuddlrlr-handler OCTO_KEY_A
+uuddlrlr-handler OCTO_KEY_D
+: uuddlrlr-end
+
+: uuddlrlr-save-if-at-end
+    :calc endoffset { uuddlrlr-end - uuddlrlrtable }
+    if v0 == endoffset then v1 := 1
+    i := uuddlrlrstate
+    save v1
+    i := level
+    load v0
+    if v1 == 1 then write-level
+;
+
+: title-screen
+    clear
+    init-balls b1-title b1
+
+    letter 14 4 title-c
+    letter 23 4 title-l
+    letter 32 4 title-o
+    letter 41 4 title-s
+
+    letter 18 17 title-t
+    letter 27 17 title-r
+    letter 36 17 title-o
+
+    loop
+        vf := delay
+        if vf == 0 begin
+            vf := 5
+            delay := vf
+            move-all
+        end
+        ve := OCTO_KEY_Q if ve key then jump done
+        ve := OCTO_KEY_E if ve key then jump done
+        ve := OCTO_KEY_W if ve key then uuddlrlr
+        ve := OCTO_KEY_S if ve key then uuddlrlr
+        ve := OCTO_KEY_A if ve key then uuddlrlr
+        ve := OCTO_KEY_D if ve key then uuddlrlr
+    again
+    : done
+    loop 
+        while ve key
+    again
+
+    init-balls b-empty b1
+    clear
+;
+
+: title-c 0xFE 0x80 0x80 0x80 0x80 0x80 0x80 0x80 0x80 0x80 0xFE
+
+: title-l 0x80 0x80 0x80 0x80 0x80 0x80 0x80 0x80 0x80 0x80 0xFE
+
+: title-o 0xFE 0x82 0x82 0x82 0x82 0x82 0x82 0x82 0x82 0x82 0xFE
+
+: title-s 0xFE 0x80 0x80 0x80 0x80 0xFE 0x02 0x02 0x02 0x02 0xFE
+
+: title-t 0xFE 0x10 0x10 0x10 0x10 0x10 0x10 0x10 0x10 0x10 0x10
+
+: title-r 0xFE 0x82 0x82 0x82 0x82 0xFE 0x88 0x88 0x88 0x88 0x88
+
+
+# repack as 
+# x dx l r y dy t b
+# So we can do smaller loads
+#  x y dx dy t l r b
+# dx/dy == 0 signals ball not yet active
+# and we assume that all subsequence aren't either
+: b1 0  0   0  0  0  0  63 31
+: b2 0  0   0  0  0  0  63 31
+: b3 0  0   0  0  0  0  63 31
+: b4 0  0   0  0  0  0  63 31
+: b5 0  0   0  0  0  0  63 31
+: b6 0  0   0  0  0  0  63 31
+: b7 0  0   0  0  0  0  63 31
+: b8 0  0   0  0  0  0  63 31
+
+: b-empty 0 0 0 0 0 0 0 0 
+: b-empty2 0 0 0 0 0 0 0 0 
+: b-empty3 0 0 0 0 0 0 0 0 
+: b1-title 33 6   1  3  5  33 37 13
+: b2-title 37 18  2  1  18 37 41 26
+: b3-title 15 5   1  1  5  15 22 13
+
+: moveset
+: player-coordinates 0 0
+: line-data
+: line-progress 0 0
+: line-direction 0
+: line-bounds 0 0
+: line-mark 0
+
+: score 0 0
+
+: level 0
+
+: fillset
+: filldatastartx 0 
+: filldataendx 0
+# y bounds for fill
+: filldatastarty 0
+: filldataendy 0
+: filldatashouldfill 0
+
+: beforedots 0xFF
+# Various width "dots" for the remainder part of the fill routine.
+: dot 0x80 
+: dot2 0xC0 
+: dot3 0xE0
+: dot4 0xF0
+: dot5 0xF8
+: dot6 0xFC
+: dot7 0xFE
+: dot8 0xFF
+: data
+
+# ...**********...
+# ..*..........*..
+# .*............*.
+# *..............*
+
+: transition-face-tl
+0x1F 0x20 0x40 0x80 0x80 0x80 0x80 0x80
+: transition-face-tr
+0xF8 0x04 0x02 0x01 0x01 0x01 0x01 0x01
+: transition-face-bl
+0x81 0x80 0x80 0x80 0x80 0x40 0x20 0x1F 
+: transition-face-br
+0x81 0x01 0x01 0x01 0x01 0x02 0x04 0xF8
+
+: grimace
+0xFF 0xA5 0xFF
+
+: sideeye
+0x42 0x21 0x42
+
+: happyeye
+0x42 0xA5 0x00
+
+: evileye
+0x81 0x42 0x00
+
+: madmouth
+0x00 0xFF 0x00
+
+: evilmouth
+0x81 0xFF 0x00
+
+: smile
+0xFF
+0x42
+0x3C
+
+# .X.
+# X.X
+# .X.
+#
+# As .X
+#    X.
+# drawn twice.
+
+: crosshair
+            0x40
+            0x80
+: ball
+            0x80
+
+
+: playstart
+    px := 0x20
+    py := 0x10
+    direction := 0
+    draw-crosshair
+    i := moveset
+    save movedata
+    next-level
+;
+
+:alias delay-check ve
+
+# Set up some specific line/ball examples for testing
+# CLOSE EXAMPLES: bx, by = 20, 16 dx, dy = 1,1, px, py = 27,16  DRAW VERTICAL
+# CLOSE EXAMPLES: bx, by = 20, 16 dx, dy = -1,-1, px, py = 32,16  DRAW VERTICAL
+: testloop
+    i := b1
+    load balldata
+    bx := 25
+    by := 19 
+    dx := 1
+    dy := 1
+    top := 0
+    left := 0
+    right := 63
+    bottom := 31
+    i := b1
+    save balldata
+
+    i := moveset
+    load movedata
+    px := 32
+    py := 10
+    i := moveset 
+    save movedata
+    check-direction := 2
+    maybe-start-line-drawing
+
+    loop
+        delay-check := delay
+        if delay-check == 0 begin
+            delay-check := 5
+            delay := delay-check
+            check-lines
+            move-all
+            if vf == 1 then jump lost
+        end
+
+    again
+;
+
+: main
+    #testloop
+
+    loop 
+        i := level
+        v0 := 0
+        save v0
+        title-screen
+
+        level-start-screen
+        playstart
+
+        loop
+            delay-check := delay
+            if delay-check == 0 begin
+                delay-check := 4
+                delay := delay-check
+                move-all
+                if vf == 1 then jump lost
+                check-lines
+                check-keys
+            end
+
+        again
+        : lost
+        lose
+    again
+
+
