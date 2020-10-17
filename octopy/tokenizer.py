@@ -21,7 +21,8 @@ class Tokenizer():
         self.consts = {"OCTO_KEY_{}".format(k):i for i, k in enumerate(keys)}
         self.consts["PI"] = math.pi
         self.consts["E"] = math.e
-        self.registers = self.registers = {"v"+hex(i)[2:]: i for i in range(0, 16)}
+        self.registers = {"v{:x}".format(i): i for i in range(0, 16)}
+        self.registers.update({"v{:X}".format(i): i for i in range(0, 16)})
         self.current_token = None
 
         # Strip out whitespace and comments while tokenizing
