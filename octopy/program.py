@@ -139,6 +139,10 @@ class Program():
     def LOADFLAGS(self, x):
         self.FX(x, 0x85)
 
+    def SAVEXY(self, x, y):
+        self.__xyn_op(5, x, y, 2)
+    def LOADXY(self, x, y):
+        self.__xyn_op(5, x, y, 3)
     def track_label(self, name, offset):
         if self.pc() + offset == 0 and name.text != "main":
             self.__add_main_jump()

@@ -245,11 +245,21 @@ class Parser():
         x = self.tokenizer.next_register()
         emitter_function(x)
 
-    def __handle_save(self):
-        self.__fx_op(self.emitter.SAVE)
+    def __save_load(self, emitter_function, emitter_functionxy):
+        x = self.tokenizer.next_register()
+        next_token = self.tokenizer.advance()
+        if (next_token is not None) and next_token.text == "-":
+            y = self.tokenizer.next_register()
+            emitter_functionxy(x, y)
+        else:
+            self.tokenizer.unadvance()
+            emitter_function(x)
 
     def __handle_load(self):
-        self.__fx_op(self.emitter.LOAD)
+        self.__save_load(self.emitter.LOAD, self.emitter.LOADXY)
+
+    def __handle_save(self):
+        self.__save_load(self.emitter.SAVE, self.emitter.SAVEXY)
 
     def __handle_saveflags(self):
         self.__fx_op(self.emitter.SAVEFLAGS)

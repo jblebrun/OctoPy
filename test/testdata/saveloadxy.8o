@@ -1,0 +1,13 @@
+:macro savexy x y {
+    save x - y
+}
+
+:macro loadxy x y {
+    load x - y
+}
+: main
+    save v5 - v6
+    load v7 - v8
+    savexy va vb
+    loadxy vc vd
+

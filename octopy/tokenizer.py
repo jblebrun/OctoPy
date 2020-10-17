@@ -24,6 +24,7 @@ class Tokenizer():
         self.registers = {"v{:x}".format(i): i for i in range(0, 16)}
         self.registers.update({"v{:X}".format(i): i for i in range(0, 16)})
         self.current_token = None
+        self.repeat_token = False
 
         # Strip out whitespace and comments while tokenizing
         def tokenize(source):
@@ -52,8 +53,14 @@ class Tokenizer():
     def current(self):
         return self.current_token
 
+    def unadvance(self):
+        self.repeat_token = True
+
     def advance(self, matcher=None):
-        self.current_token = next(self.tokengen, None)
+        if self.repeat_token:
+            self.repeat_token = False
+        else:
+            self.current_token = next(self.tokengen, None)
         if matcher is not None:
             return matcher()
         return self.current_token
