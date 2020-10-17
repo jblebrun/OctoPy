@@ -1,16 +1,21 @@
+from typing import NamedTuple
+
 from octopy.errors import ParseError
 from octopy.tokenizer import Token
+
+class Unresolved(NamedTuple):
+    jumpsandcalls: list
+    begins: list
+    loops: list
+    whiles: list
+    unpacks: dict
 
 # pylint: disable=too-many-public-methods
 class Program():
     def __init__(self):
         self.program = bytearray()
         self.labels = {}
-        self.unresolved = []
-        self.loops = []
-        self.endjumps = []
-        self.whilejumps = []
-        self.unpacks = {}
+        self.unresolved = Unresolved([], [], [], [], {})
 
     def pc(self):
         return len(self.program)
@@ -28,7 +33,7 @@ class Program():
         if isinstance(n, int):
             self.__emit((op << 4 | n >> 8, n & 0xFF))
         elif isinstance(n, Token):
-            self.unresolved.append((n, self.pc()))
+            self.unresolved.jumpsandcalls.append((n, self.pc()))
             self.__emit((op << 4 | 5, 0x55))
         else:
             raise Exception("Only number or token for n_op")
@@ -40,14 +45,14 @@ class Program():
         self.program[jumpspot+1] = target & 0xFF
 
     def __add_main_jump(self):
-        self.unresolved.append((Token("main", 0, 0), 0))
+        self.unresolved.jumpsandcalls.append((Token("main", 0, 0), 0))
         self.JMP(0x555)
 
     def __pop_end_jump(self, offset=0):
-        if len(self.endjumps) == 0:
+        if len(self.unresolved.begins) == 0:
             return False
 
-        endjump = self.endjumps.pop()
+        endjump = self.unresolved.begins.pop()
         self.__resolve_addrop(endjump, self.pc() + offset)
         return True
 
@@ -144,47 +149,47 @@ class Program():
     def emit_else(self):
         if not self.__pop_end_jump(2):
             return False
-        self.endjumps.append(self.pc())
+        self.unresolved.begins.append(self.pc())
         self.JMP(0x333)
         return True
 
     def emit_begin(self):
-        self.endjumps.append(self.pc())
+        self.unresolved.begins.append(self.pc())
         self.JMP(0x333)
 
     def emit_while(self):
-        self.whilejumps[-1].append(self.pc())
+        self.unresolved.whiles[-1].append(self.pc())
         self.JMP(0x444)
 
     def emit_end(self):
         return self.__pop_end_jump()
 
     def start_loop(self):
-        self.whilejumps.append([])
-        self.loops.append(self.pc())
+        self.unresolved.whiles.append([])
+        self.unresolved.loops.append(self.pc())
 
     def end_loop(self):
-        whiles = self.whilejumps.pop()
+        whiles = self.unresolved.whiles.pop()
         for whilespot in whiles:
             self.__resolve_addrop(whilespot, self.pc()+2)
 
-        ret = self.loops.pop()
+        ret = self.unresolved.loops.pop()
         self.JMP(ret+0x200)
 
     def emit_unpack(self, msn, name):
         self.LDN(0, msn << 4)
         self.LDN(1, 0)
-        self.unpacks[self.pc()] = name
+        self.unresolved.unpacks[self.pc()] = name
 
     def resolve(self):
-        for pc, token in self.unpacks.items():
+        for pc, token in self.unresolved.unpacks.items():
             if token.text not in self.labels:
                 raise ParseError("Unresolved name", token)
             target = self.labels[token.text] + 0x200
             self.program[pc-1] = target & 0xFF
             self.program[pc-3] |= (target >> 8) & 0xF
 
-        for (token, location) in self.unresolved:
+        for (token, location) in self.unresolved.jumpsandcalls:
             if token.text not in self.labels:
                 raise ParseError("Unresolved name", token)
             op = self.program[location] >> 4
