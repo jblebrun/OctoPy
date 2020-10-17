@@ -16,6 +16,11 @@ if __name__ == "__main__":
 
     program = assemble(f)
 
+    if program.error is not None:
+        print("Assembly failed:")
+        print(program.error)
+        sys.exit(-1)
+
     if len(sys.argv) > 2:
         outname = sys.argv[2]
     else:

@@ -14,6 +14,7 @@ class Unresolved(NamedTuple):
 class Program():
     def __init__(self):
         self.program = bytearray()
+        self.error = None
         self.labels = {}
         self.unresolved = Unresolved([], [], [], [], {})
 
@@ -138,13 +139,12 @@ class Program():
     def LOADFLAGS(self, x):
         self.FX(x, 0x85)
 
-    def track_label(self, name):
-        if self.pc() == 0 and name != "main":
+    def track_label(self, name, offset):
+        if self.pc() + offset == 0 and name.text != "main":
             self.__add_main_jump()
-        self.labels[name] = self.pc()
-
-    def track_next(self, name):
-        self.labels[name] = self.pc() + 1
+        if name.text in self.labels:
+            raise ParseError("duplicate label defined", name)
+        self.labels[name.text] = self.pc() + offset
 
     def emit_else(self):
         if not self.__pop_end_jump(2):
