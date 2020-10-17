@@ -80,7 +80,7 @@ class Tokenizer():
 
     def expect_ident(self):
         if not validIdent.match(self.current_token.text):
-            self.error("Expected an identifier")
+            self.error("Expected an identifier: {}".format(self.current_token.text))
         return self.current_token
 
     def next_ident(self):
