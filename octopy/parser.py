@@ -134,7 +134,14 @@ class Parser():
         self.macros[name] = MacroEntry(Macro(name, args, tokens), 0)
 
     def __handle_org(self):
-        addr = self.tokenizer.next_long_address()
+        if self.tokenizer.advance().text == "{":
+            addr = self.__calc_expr()
+            if addr < -0x7FFF or addr > 0xFFFF:
+                self.error("""
+                  register expression result '{}' is out of range [0x-7FFF,0xFFFF]
+                """.format(addr))
+        else:
+            addr = self.tokenizer.expect_long_address()
         self.emitter.org(addr)
 
     def __handle_unpack(self):

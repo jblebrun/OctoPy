@@ -1,6 +1,9 @@
 : main
     v0 := 1
 
+:macro reorg offset {
+    :calc X { HERE + offset } :org { X }
+}
 
 :org 0x250
 : func 
@@ -9,3 +12,5 @@
 :org 0x230
     v6 := 7
 
+
+reorg 0x5000
