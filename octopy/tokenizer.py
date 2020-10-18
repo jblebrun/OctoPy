@@ -25,6 +25,7 @@ class Tokenizer():
         self.registers.update({"v{:X}".format(i): i for i in range(0, 16)})
         self.current_token = None
         self.repeat_token = False
+        self.calls = []
 
         # Strip out whitespace and comments while tokenizing
         def tokenize(source):
@@ -65,20 +66,27 @@ class Tokenizer():
             return matcher()
         return self.current_token
 
-    def maptokenizer(self, tokens, mapping):
-        """
-        A helper that takes a sequence of tokens and returns a generator that
-        produces the sequence of tokens, but for any token that appears as a key in the
-        provided mapping, the map value will be provided, instead.
-        """
+    def emit_macro(self, calls, tokens, mapping):
         def convert_token(token):
             if token.text in mapping:
                 return Token(mapping[token.text].text, token.line, token.field)
             return token
+        macrotokengen = (convert_token(t) for t in tokens)
 
-        mapped = copy.copy(self)
-        mapped.tokengen = (convert_token(t) for t in tokens)
-        return mapped
+        self.calls.append(calls)
+
+        curgen = self.tokengen
+        def newgen():
+            yield from macrotokengen
+            self.calls.pop()
+            yield from curgen
+
+        self.tokengen = newgen()
+
+    def copy(self, tokens):
+        copied = copy.copy(self)
+        copied.tokengen = tokens
+        return copied
 
     def expect(self, matcher, msg):
         res = matcher()
@@ -110,6 +118,9 @@ class Tokenizer():
         return self.expect(self.accept_register, "register")
 
     def parse_number(self):
+        if self.current_token.text == "CALLS":
+            return self.calls[-1]
+
         if self.current_token.text in self.consts:
             return self.consts[self.current_token.text]
 
