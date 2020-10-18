@@ -1,0 +1,11 @@
+:macro if-flag FLAG {
+    vf := FLAG
+    vf &= v8
+    if vf == 0
+}
+
+
+: main
+    if-flag 0x80 begin
+        sprite v0 v1 8
+    end
