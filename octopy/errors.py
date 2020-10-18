@@ -1,3 +1,4 @@
+import traceback
 class ParseError(Exception):
     def __init__(self, msg, token):
         super().__init__(msg)
@@ -5,16 +6,14 @@ class ParseError(Exception):
         self.token = token
 
     def __str__(self):
-        cause = self
-        while cause is not None:
-            if cause.__class__ is not ParseError:
-                raise cause
-            cause = cause.__cause__
-
         lines = []
         err = self
         while err is not None:
-            lines.append("{}: {}".format(err.token, err.msg))
+            if isinstance(err, ParseError):
+                lines.append("{}: {}".format(err.token, err.msg))
+            else:
+                lines.append("assembler crash: {}".format(err))
+                lines += traceback.format_tb(err.__traceback__)
             err = err.__cause__
 
         return "\n".join(lines)

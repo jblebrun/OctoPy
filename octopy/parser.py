@@ -41,11 +41,8 @@ class Parser():
         """
         macro = self.macros[self.tokenizer.current().text]
         macroargs = {k:self.tokenizer.advance() for k in macro.macro.args}
-        macro_tokenizer = self.tokenizer.maptokenizer(macro.macro.tokens, macroargs)
-        macro_tokenizer.add_const("CALLS", macro.calls)
+        self.tokenizer.emit_macro(macro.calls, macro.macro.tokens, macroargs)
         macro.calls += 1
-        macro_parser = Parser(macro_tokenizer, self.emitter, self.macros)
-        macro_parser.parse()
 
     def __expect_statement(self):
         start_type = "Parsing Statement"
@@ -117,7 +114,7 @@ class Parser():
 
     def __calc_expr(self):
         tokens = self.__token_cluster()
-        calc_tokenizer = self.tokenizer.maptokenizer(reversed(tokens), {})
+        calc_tokenizer = self.tokenizer.copy(reversed(tokens))
         calc_tokenizer.add_const("HERE", self.emitter.pc())
         return calc(calc_tokenizer, self.emitter.lookup)
 

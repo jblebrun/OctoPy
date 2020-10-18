@@ -1,11 +1,18 @@
-:macro cs r {
+:macro cs2 r {
     :calc offset { 12 * CALLS + 1 }
+    r := CALLS
+}
+:macro cs r r2 {
+    :calc offset { 12 * CALLS + 1 }
+    cs2 r2
+    cs2 r2
     r := CALLS
 }
 
 : main
-    cs v0
-    cs v1
-    cs v3
-    cs v4
+    cs v0 v2
+    cs v1 v4
+    cs v3 v6
+    cs v5 v8
+
 
