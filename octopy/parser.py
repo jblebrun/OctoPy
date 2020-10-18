@@ -134,7 +134,7 @@ class Parser():
         self.macros[name] = MacroEntry(Macro(name, args, tokens), 0)
 
     def __handle_org(self):
-        addr = self.tokenizer.next_address()
+        addr = self.tokenizer.next_long_address()
         self.emitter.org(addr)
 
     def __handle_unpack(self):
@@ -180,6 +180,10 @@ class Parser():
         if curtext in ("hex", "bighex"):
             f = self.emitter.LDHEX if curtext == "hex" else self.emitter.LDBIGHEX
             f(self.tokenizer.next_register())
+            return
+
+        if curtext == "long":
+            self.emitter.LDIL(self.tokenizer.next_long_location())
             return
 
         self.emitter.LDI(self.tokenizer.expect_location())

@@ -1,0 +1,17 @@
+:const big 0xF182
+
+:macro ilong which {
+    i := long which 
+}
+
+: main
+    ilong big
+    ilong 0xF777
+    ilong somewhere
+
+:org 0xC400
+: somewhere
+    0xAB
+
+:org 0x3000
+    0xCD
