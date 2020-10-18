@@ -119,7 +119,7 @@ class Parser():
         tokens = self.__token_cluster()
         calc_tokenizer = self.tokenizer.maptokenizer(reversed(tokens), {})
         calc_tokenizer.add_const("HERE", self.emitter.pc())
-        return calc(calc_tokenizer)
+        return calc(calc_tokenizer, self.emitter.lookup)
 
 
     def __handle_const(self):

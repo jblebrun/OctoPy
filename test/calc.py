@@ -4,18 +4,23 @@ from octopy.tokenizer import Tokenizer, Token
 from octopy.calc import calc
 from octopy.parser import ParseError
 
+def no_rom(n): 
+    raise Exception("no rom provided")
+
 class TestCalc(unittest.TestCase):
-    def expr_test(self, expr, expect, msg=None):
+    def expr_test(self, expr, expect, msg=None, rom_lookup=no_rom, consts=None):
         print("TEST", expr)
         tokens = [Token(t, 0, 0) for t in expr.split(" ")]
         tokenizer = Tokenizer("")
         tokenizer.tokengen = reversed(tokens)
+        if consts is not None:
+            tokenizer.consts.update(consts)
         if isinstance(expect, type):
             print("CHECK RAISES", msg)
             with self.assertRaisesRegex(expect, msg):
-                calc(tokenizer)
+                calc(tokenizer, rom_lookup)
         else:
-            result = calc(tokenizer)
+            result = calc(tokenizer, rom_lookup)
             self.assertEqual(result, expect)
 
     def test_simple(self):
@@ -62,6 +67,13 @@ class TestCalc(unittest.TestCase):
 
     def test_startunaryneg(self):
         self.expr_test("- 1 * 6", -6)
+
+    def test_romlookup(self):
+        consts = {"somewhere": 1, "another": 3}
+        def lookup(n):
+            print("lookup",n)
+            return [11, 2, 33, 44][n]
+        self.expr_test("2 * @ somewhere + @ somewhere", 88, consts=consts, rom_lookup=lookup)
 
 
 if __name__ == '__main__': unittest.main()

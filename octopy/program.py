@@ -26,6 +26,9 @@ class Program():
     def org(self, org):
         self.__offset = org - 0x200
 
+    def lookup(self, n):
+        return self.program[n - 0x200]
+
     def breakpoint(self, name):
         self.breakpoints[name.text] = (name, self.pc())
 
