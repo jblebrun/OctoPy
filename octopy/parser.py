@@ -96,6 +96,11 @@ class Parser():
         name = self.tokenizer.next_ident()
         self.emitter.breakpoint(name)
 
+    def __handle_monitor(self):
+        addr = self.tokenizer.next_long_address()
+        monlen = self.tokenizer.next_nybble()
+        self.emitter.monitor(addr, monlen)
+
     def __handle_byte(self):
         if self.tokenizer.advance().text == "{":
             value = self.__calc_expr()
