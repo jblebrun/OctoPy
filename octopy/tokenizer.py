@@ -13,7 +13,7 @@ class Token(NamedTuple):
     def __repr__(self):
         return "`{}` (at line {} field {})".format(self.text, self.line, self.field)
 
-validIdent = re.compile("[a-zA-Z_][0-9a-zA-Z-_]*")
+validIdent = re.compile("[a-zA-Z_.][0-9a-zA-Z-_.]*")
 
 class Tokenizer():
     def __init__(self, source):
