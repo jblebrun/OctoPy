@@ -1,0 +1,11 @@
+:macro foo {
+    audio
+    scroll-up 5
+    plane 1
+}
+
+: main
+    plane 3
+    foo
+    audio
+    scroll-up 7

@@ -243,6 +243,10 @@ class Parser():
         n = self.tokenizer.next_nybble()
         self.emitter.SCD(n)
 
+    def __handle_scroll_up(self):
+        n = self.tokenizer.next_nybble()
+        self.emitter.SCU(n)
+
     def __handle_scroll_left(self):
         self.emitter.SCL()
 
@@ -313,6 +317,13 @@ class Parser():
         y = self.tokenizer.next_register()
         lines = self.tokenizer.next_nybble()
         return self.emitter.SPRITE(x, y, lines)
+
+    def __handle_plane(self):
+        n = self.tokenizer.next_nybble()
+        return self.emitter.PLANE(n)
+
+    def __handle_audio(self):
+        return self.emitter.AUDIO()
 
     ################
     ### Conditionals

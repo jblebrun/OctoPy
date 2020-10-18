@@ -75,6 +75,8 @@ class Program():
         self.SYS(0xE0)
     def SCD(self, n):
         self.SYS(0xC << 4 | n)
+    def SCU(self, n):
+        self.SYS(0xD << 4 | n)
     def RET(self):
         self.SYS(0xEE)
     def SCR(self):
@@ -117,6 +119,10 @@ class Program():
         self.__xn_op(0xC, x, n)
     def SPRITE(self, x, y, n):
         self.__xyn_op(0xD, x, y, n)
+    def PLANE(self, n):
+        self.__xn_op(0xF, n, 0x01)
+    def AUDIO(self):
+        self.__n_op(0xF, 0x002)
 
     def SKNP(self, x):
         self.__xn_op(0xE, x, 0x9E)
