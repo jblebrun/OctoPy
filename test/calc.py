@@ -60,5 +60,8 @@ class TestCalc(unittest.TestCase):
     def test_nestedgroup(self):
         self.expr_test("4 * ( 2 + ( 3 * ( 1 + 1 ) ) + 3 ) - 2", 36)
 
+    def test_startunaryneg(self):
+        self.expr_test("- 1 * 6", -6)
+
 
 if __name__ == '__main__': unittest.main()

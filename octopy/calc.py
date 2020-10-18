@@ -29,7 +29,10 @@ def calc(tokenizer, group_open=None):
             pending_op = token.text
         token = tokenizer.advance()
 
-    if pending_op is not None:
+    if pending_op in unary_ops:
+        result = unary_ops[pending_op](result)
+        pending_op = None
+    if pending_op in binary_ops:
         raise ParseError("incomplete expression", tokenizer.current())
     if group_open is not None and (token is None or token.text != "("):
         raise ParseError("unexpected )", group_open)
