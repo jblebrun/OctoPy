@@ -79,7 +79,8 @@ class Tokenizer():
         def newgen():
             yield from macrotokengen
             self.calls.pop()
-            yield from curgen
+            self.tokengen = curgen
+            yield next(curgen, None)
 
         self.tokengen = newgen()
 
