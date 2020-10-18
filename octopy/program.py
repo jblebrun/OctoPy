@@ -10,6 +10,10 @@ class Unresolved(NamedTuple):
     whiles: list
     unpacks: dict
 
+class Debugger(NamedTuple):
+    breakpoints: dict
+    monitors: list
+
 # pylint: disable=too-many-public-methods
 class Program():
     def __init__(self):
@@ -17,7 +21,7 @@ class Program():
         self.__offset = 0
         self.error = None
         self.labels = {}
-        self.breakpoints = {}
+        self.debugger = Debugger({}, [])
         self.unresolved = Unresolved([], [], [], [], {})
 
     def pc(self):
@@ -30,7 +34,10 @@ class Program():
         return self.program[n - 0x200]
 
     def breakpoint(self, name):
-        self.breakpoints[name.text] = (name, self.pc())
+        self.debugger.breakpoints[name.text] = (name, self.pc())
+
+    def monitor(self, addr, monlen):
+        self.debugger.monitors.append((addr, monlen))
 
     def __emit(self, op):
         if self.__offset < 0:
