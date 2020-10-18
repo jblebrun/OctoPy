@@ -3,10 +3,18 @@ import operator
 
 from octopy.errors import ParseError
 
-def calc(tokenizer, group_open=None):
+def calc(tokenizer, rom_lookup, group_open=None):
     result = 0
     pending_op = "+"
+
+    unary_ops = standard_unary_ops.copy()
+    unary_ops["@"] = rom_lookup
     token = tokenizer.advance()
+
+    def read_num():
+        if tokenizer.current().text == ")":
+            return calc(tokenizer, rom_lookup, tokenizer.current())
+        return tokenizer.parse_number()
 
     while token is not None:
         if token.text == "(":
@@ -14,7 +22,7 @@ def calc(tokenizer, group_open=None):
                 raise ParseError("unclosed group", token)
             break
         if pending_op is not None:
-            num = calc(tokenizer, token) if token.text == ")" else tokenizer.parse_number()
+            num = read_num()
             if num is None:
                 if pending_op not in unary_ops or token.text not in binary_ops:
                     raise ParseError("expected number", token)
@@ -59,7 +67,7 @@ binary_ops = {
     "<=": operator.le,
 }
 
-unary_ops = {
+standard_unary_ops = {
     "-": operator.neg,
     "~": operator.invert,
     "sin": math.sin,
@@ -72,6 +80,6 @@ unary_ops = {
     "sign": lambda n: -1 if n < 0 else 1 if n > 0 else 0,
     "ceil": math.ceil,
     "floor": math.floor,
-    #"@": lambda n: n,
-    #"strlen": strlen,
+    #"@": is per-copy
+    #"strlen": strlen, TODO
 }
