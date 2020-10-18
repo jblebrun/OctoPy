@@ -96,7 +96,8 @@ class Parser():
         self.tokenizer.add_register(dst, int(src))
 
     def __handle_breakpoint(self):
-        self.emitter.breakpoint()
+        name = self.tokenizer.next_ident()
+        self.emitter.breakpoint(name)
 
     def __handle_byte(self):
         if self.tokenizer.advance().text == "{":

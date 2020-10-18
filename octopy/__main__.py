@@ -39,5 +39,8 @@ if __name__ == "__main__":
     for name, pc in program.consts.items():
         if name not in program.labels:
             fout.write("{} = {}\n".format(name, pc))
-    formatted_breakpoints = ("0x{:04X}".format(bp) for bp in program.breakpoints)
+    for name, (token, pc) in program.breakpoints.items():
+        fout.write("{} = 0x0{:3X}   # breakpoint: {}\n".format(name, pc, token))
+
+    formatted_breakpoints = ("0x{:04X}".format(pc) for (token, pc) in program.breakpoints.values())
     fout.write("breakpoints=[{}]\n".format(",".join(formatted_breakpoints)))

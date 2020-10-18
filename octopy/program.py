@@ -17,7 +17,7 @@ class Program():
         self.__offset = 0
         self.error = None
         self.labels = {}
-        self.breakpoints = []
+        self.breakpoints = {}
         self.unresolved = Unresolved([], [], [], [], {})
 
     def pc(self):
@@ -26,8 +26,8 @@ class Program():
     def org(self, org):
         self.__offset = org - 0x200
 
-    def breakpoint(self):
-        self.breakpoints.append(self.pc())
+    def breakpoint(self, name):
+        self.breakpoints[name.text] = (name, self.pc())
 
     def __emit(self, op):
         if self.__offset < 0:
