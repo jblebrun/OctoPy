@@ -126,10 +126,14 @@ class Tokenizer():
             return self.consts[self.current_token.text]
 
         try:
-            num = int(self.current_token.text, 0)
+            return int(self.current_token.text, 0)
         except ValueError:
-            return None
-        return num
+            # Decimal numbers with leading 0 do not parse in Python.
+            # So also attempt exlicit decimal parsing ot handle those.
+            try:
+                return int(self.current_token.text, 10)
+            except ValueError:
+                return None
 
     def accept_ranged_number(self, low, high):
         num = self.parse_number()

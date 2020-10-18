@@ -1,0 +1,7 @@
+: data
+    0x00 1 2 05 06 0b101101
+
+: main
+    i := data
+    load v4
+    save v4
